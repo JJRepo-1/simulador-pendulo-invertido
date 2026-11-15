@@ -1,18 +1,18 @@
 extends Node2D
 
 # ============================================================
-# 1. PARAMETROS FISICOS (SISTEMA INTERNACIONAL)
+# 1. PARAMETROS (se cargan desde el Autoload Globals en _ready)
 # ============================================================
-# Se cargan desde el Autoload Globals en _ready() (unica fuente
-# de verdad, editable desde la pantalla de Configuracion).
 
-var cart_mass: float = 2.0              # M [kg]
-var bob_mass: float = 0.2               # m [kg]
-var arm_length: float = 0.5             # l [m]
-var inertia: float = 0.05               # J [kg*m^2]
-var gravity: float = 9.81               # g [m/s^2]
-var cart_viscous_friction: float = 0.10 # [N*s/m]
-var pivot_viscous_damping: float = 0.005 # [N*m*s/rad]
+# Parametros fisicos (M, m, l, J, g, c, b) y modelo de referencia
+var modelo: PenduloModelo = PenduloModelo.new()
+
+# Planta que se simula: las ecuaciones no lineales del usuario
+# (ModeloFormulas) o, si tienen errores, el modelo de referencia.
+var planta = null
+var planta_status: String = ""
+var planta_es_usuario: bool = false
+
 var max_force_newtons: float = 150.0    # Saturacion del actuador [N]
 
 # K = [kx, ktheta, kdx, kdtheta], calculada en MATLAB (LMI).
@@ -35,6 +35,10 @@ var K: Vector4 = Vector4.ZERO
 
 @export_group("Seguimiento en Tiempo Real")
 @export var move_duration: float = 2.0       # Tiempo [s] para llegar al nuevo punto
+
+@export_group("Comparacion con Modelo Lineal")
+# Simula en paralelo dX/dt = A*X + B*u con las A y B escritas en Configuracion
+@export var compare_linear: bool = true
 
 # Variables internas de la trayectoria polinomica de 5o orden (metros)
 var traj_time: float = 0.0
@@ -74,6 +78,14 @@ var theta_velocity: float = 0.0
 # Fuerza de control aplicada al final del ultimo paso [N]
 var applied_control_force: float = 0.0
 
+# --- Modelo lineal (fase 2) ---
+var linear_available: bool = false
+var linear_status: String = ""
+var A_lin := PackedFloat64Array()   # 16 valores por filas
+var B_lin := PackedFloat64Array()   # 4 valores
+var linear_state: Vector4 = Vector4.ZERO
+var linear_max_angle_gap: float = 0.0  # max |theta_nl - theta_lin| [rad]
+
 
 # ============================================================
 # 5. REFERENCIAS A NODOS
@@ -94,6 +106,12 @@ var applied_control_force: float = 0.0
 @onready var plot_vel: RealTimePlot = $CanvasLayer/plots/Control4
 @onready var plot_ang_vel: RealTimePlot = $CanvasLayer/plots/Control2
 
+# Creados por codigo
+var chk_linear: CheckBox
+var lbl_linear: Label
+var lbl_plant: Label
+var linear_overlay: Node2D
+
 
 # ============================================================
 # 6. INICIALIZACION
@@ -106,39 +124,44 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 
+	_load_linear_model()
 	_setup_plots()
 	_setup_inputs()
+	_setup_linear_ui()
 
 	reset_state(input_pos_inicial.value, input_angulo_inicial.value)
 
 
 func _load_parameters() -> void:
-	cart_mass = Globals.cart_mass
-	bob_mass = Globals.bob_mass
-	arm_length = Globals.arm_length
-	inertia = Globals.inertia
-	gravity = Globals.gravity
-	cart_viscous_friction = Globals.cart_viscous_friction
-	pivot_viscous_damping = Globals.pivot_viscous_damping
+	modelo = Globals.crear_modelo()
 	max_force_newtons = Globals.max_force_newtons
 	K = Globals.K
+	_load_plant()
+
+
+# Planta no lineal: ecuaciones del usuario si compilan, si no la referencia.
+func _load_plant() -> void:
+	var r: Dictionary = Globals.crear_modelo_usuario()
+	planta_es_usuario = r.ok
+	if r.ok:
+		planta = r.modelo
+		planta_status = "Planta: tus ecuaciones no lineales"
+	else:
+		planta = modelo
+		planta_status = "Planta: modelo de referencia (tus ecuaciones tienen errores)"
+		push_warning("Ecuaciones no lineales del usuario con errores; se usa el modelo de referencia.")
 
 
 func _validate_parameters() -> bool:
-	if pixels_per_meter <= 0.0:
-		push_error("pixels_per_meter debe ser positivo.")
-		return false
-	if arm_length <= 0.0 or cart_mass <= 0.0 or bob_mass <= 0.0:
-		push_error("Las masas y la longitud deben ser positivas.")
-		return false
-	if inertia < 0.0:
-		push_error("El momento de inercia no puede ser negativo.")
-		return false
-	if cart_viscous_friction < 0.0 or pivot_viscous_damping < 0.0:
-		push_error("Los coeficientes de friccion no pueden ser negativos.")
+	var error_modelo: String = modelo.validar()
+	if error_modelo != "":
+		push_error(error_modelo)
 		return false
 	if max_force_newtons <= 0.0:
 		push_error("La fuerza maxima debe ser positiva.")
+		return false
+	if pixels_per_meter <= 0.0:
+		push_error("pixels_per_meter debe ser positivo.")
 		return false
 	if max_integration_step <= 0.0:
 		push_error("El paso de integracion debe ser positivo.")
@@ -147,6 +170,22 @@ func _validate_parameters() -> bool:
 		push_error("El limite maximo debe ser mayor que el minimo.")
 		return false
 	return true
+
+
+# Evalua las formulas de A y B (Configuracion) con los parametros actuales.
+func _load_linear_model() -> void:
+	var r: Dictionary = FormulasLineales.evaluar_modelo(
+		Globals.lineal_aux, Globals.lineal_A, Globals.lineal_B, modelo.parametros())
+
+	linear_available = r.ok
+	if r.ok:
+		A_lin = r.A
+		B_lin = r.B
+		linear_status = "Modelo lineal listo"
+	else:
+		A_lin = PackedFloat64Array()
+		B_lin = PackedFloat64Array()
+		linear_status = "A/B con errores: revisa Configuración"
 
 
 func _setup_plots() -> void:
@@ -212,6 +251,53 @@ func _setup_inputs() -> void:
 		input_angulo_inicial.value_changed.connect(_on_preview_changed)
 
 
+# Casilla, estado y "fantasma" del modelo lineal.
+func _setup_linear_ui() -> void:
+	var panel := VBoxContainer.new()
+	panel.position = Vector2(540.0, 19.0)
+	panel.scale = Vector2(0.5, 0.5)
+	$CanvasLayer.add_child(panel)
+
+	lbl_plant = Label.new()
+	lbl_plant.add_theme_font_size_override("font_size", 14)
+	lbl_plant.add_theme_color_override("font_color",
+		Color(0.45, 0.9, 0.5) if planta_es_usuario else Color(1.0, 0.7, 0.25))
+	lbl_plant.text = planta_status
+	panel.add_child(lbl_plant)
+
+	chk_linear = CheckBox.new()
+	chk_linear.text = "Comparar con modelo lineal"
+	chk_linear.button_pressed = compare_linear and linear_available
+	chk_linear.disabled = not linear_available
+	chk_linear.add_theme_color_override("font_color", Color(1.0, 0.45, 0.85))
+	chk_linear.toggled.connect(_on_linear_toggled)
+	panel.add_child(chk_linear)
+
+	lbl_linear = Label.new()
+	lbl_linear.add_theme_font_size_override("font_size", 14)
+	panel.add_child(lbl_linear)
+
+	# Nodo dibujado encima de los sprites para el pendulo lineal
+	linear_overlay = Node2D.new()
+	linear_overlay.z_index = 1
+	linear_overlay.draw.connect(_draw_linear_overlay)
+	add_child(linear_overlay)
+
+	_update_linear_label()
+
+
+func _stop_with_error(message: String) -> void:
+	is_simulating = false
+	push_warning(message)
+	if lbl_plant:
+		lbl_plant.text = message
+		lbl_plant.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
+
+
+func _linear_enabled() -> bool:
+	return linear_available and chk_linear != null and chk_linear.button_pressed
+
+
 # ============================================================
 # 7. INTERFAZ
 # ============================================================
@@ -226,6 +312,14 @@ func _on_btn_simular_pressed() -> void:
 	input_angulo_inicial.apply()
 	reset_state(input_pos_inicial.value, input_angulo_inicial.value)
 	is_simulating = true
+
+
+func _on_linear_toggled(_pressed: bool) -> void:
+	# Al activar a mitad de simulacion, el lineal arranca desde el estado real
+	linear_state = Vector4(cart_x, theta, cart_velocity, theta_velocity)
+	linear_max_angle_gap = 0.0
+	_update_linear_label()
+	update_visuals()
 
 
 # Nueva referencia: genera un polinomio de 5o orden desde el estado
@@ -283,6 +377,18 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 	initial_angle_deg = start_angle_deg
 	applied_control_force = 0.0
 
+	# Limpiar un error de simulacion anterior de las ecuaciones del usuario
+	if planta_es_usuario:
+		planta.error_ejecucion = ""
+	if lbl_plant:
+		lbl_plant.text = planta_status
+		lbl_plant.add_theme_color_override("font_color",
+			Color(0.45, 0.9, 0.5) if planta_es_usuario else Color(1.0, 0.7, 0.25))
+
+	# El modelo lineal parte de las mismas condiciones iniciales
+	linear_state = Vector4(cart_x, theta, 0.0, 0.0)
+	linear_max_angle_gap = 0.0
+
 	# Referencia en reposo sobre la posicion inicial
 	traj_target_m = cart_x
 	traj_time = 0.0
@@ -295,6 +401,7 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 	plot_vel.clear()
 	plot_ang_vel.clear()
 
+	_update_linear_label()
 	update_visuals()
 
 
@@ -315,11 +422,23 @@ func _physics_process(delta: float) -> void:
 	var h: float = simulation_delta / float(substeps)
 
 	var state: Vector4 = Vector4(cart_x, theta, cart_velocity, theta_velocity)
+	var use_linear: bool = _linear_enabled()
 
 	for _i in range(substeps):
 		state = _rk4_step(state, traj_time, h)
 		state = _enforce_cart_limits(state)
+		if use_linear:
+			linear_state = _rk4_step_linear(linear_state, traj_time, h)
 		traj_time += h
+
+	# Si las ecuaciones del usuario fallan (division entre cero, valores no
+	# finitos), se detiene la simulacion y se informa en pantalla.
+	if planta_es_usuario and planta.error_ejecucion != "":
+		_stop_with_error("Simulación detenida: " + planta.error_ejecucion)
+		return
+	if not (is_finite(state.x) and is_finite(state.y) and is_finite(state.z) and is_finite(state.w)):
+		_stop_with_error("Simulación detenida: el estado dejó de ser finito.")
+		return
 
 	cart_x = state.x
 	theta = state.y
@@ -330,14 +449,22 @@ func _physics_process(delta: float) -> void:
 	update_visuals()
 
 	var ref_x_actual: float = _evaluate_trajectory(traj_time).x
-	plot_pos.add_sample(cart_x, ref_x_actual)
-	plot_angle.add_sample(rad_to_deg(theta))
-	plot_vel.add_sample(cart_velocity)
-	plot_ang_vel.add_sample(rad_to_deg(theta_velocity))
+	if use_linear:
+		linear_max_angle_gap = maxf(linear_max_angle_gap, absf(theta - linear_state.y))
+		plot_pos.add_sample(cart_x, ref_x_actual, linear_state.x)
+		plot_angle.add_sample(rad_to_deg(theta), NAN, rad_to_deg(linear_state.y))
+		plot_vel.add_sample(cart_velocity, NAN, linear_state.z)
+		plot_ang_vel.add_sample(rad_to_deg(theta_velocity), NAN, rad_to_deg(linear_state.w))
+		_update_linear_label()
+	else:
+		plot_pos.add_sample(cart_x, ref_x_actual)
+		plot_angle.add_sample(rad_to_deg(theta))
+		plot_vel.add_sample(cart_velocity)
+		plot_ang_vel.add_sample(rad_to_deg(theta_velocity))
 
 
 # ============================================================
-# 10. INTEGRADOR RUNGE-KUTTA DE CUARTO ORDEN
+# 10. INTEGRADORES RUNGE-KUTTA DE CUARTO ORDEN
 # ============================================================
 
 func _rk4_step(state: Vector4, t: float, h: float) -> Vector4:
@@ -348,13 +475,21 @@ func _rk4_step(state: Vector4, t: float, h: float) -> Vector4:
 	return state + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
 
 
+func _rk4_step_linear(state: Vector4, t: float, h: float) -> Vector4:
+	var k1: Vector4 = _linear_derivative(state, t)
+	var k2: Vector4 = _linear_derivative(state + k1 * (h * 0.5), t + h * 0.5)
+	var k3: Vector4 = _linear_derivative(state + k2 * (h * 0.5), t + h * 0.5)
+	var k4: Vector4 = _linear_derivative(state + k3 * h, t + h)
+	return state + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
+
+
 # ============================================================
 # 11. CONTROLADOR LINEAL (realimentacion de estado por error)
 # ============================================================
 # u = u_ff - K * (X - X_ref), con X_ref = [x_ref, 0, dx_ref, 0].
 # Equivale a u = -K*X + Nbar*r de MATLAB (Nbar = K(1)).
 
-func _control_force(state: Vector4, t: float) -> float:
+func _control_law(state: Vector4, t: float) -> float:
 	if not control_enabled:
 		return 0.0
 
@@ -367,58 +502,42 @@ func _control_force(state: Vector4, t: float) -> float:
 
 	var u_ff: float = 0.0
 	if use_feedforward:
-		u_ff = (cart_mass + bob_mass) * ref.z + cart_viscous_friction * ref.y
+		u_ff = (modelo.M + modelo.m) * ref.z + modelo.c * ref.y
 
-	var u: float = u_ff - (
+	return u_ff - (
 		K.x * x_error +
 		K.y * theta_error +
 		K.z * dx_error +
 		K.w * dtheta_error
 	)
 
-	return clampf(u, -max_force_newtons, max_force_newtons)
+
+# Fuerza que recibe la planta no lineal: ley de control con saturacion.
+func _control_force(state: Vector4, t: float) -> float:
+	return clampf(_control_law(state, t), -max_force_newtons, max_force_newtons)
 
 
 # ============================================================
-# 12. MODELO DINAMICO NO LINEAL
+# 12. MODELOS DINAMICOS
 # ============================================================
 
+# Planta no lineal: ecuaciones del usuario o modelo de referencia
 func _state_derivative(state: Vector4, t: float) -> Vector4:
-	var u: float = _control_force(state, t)
-	return Vector4(state.z, state.w, 0.0, 0.0) + _accelerations(state, u)
+	return planta.derivada(state, _control_force(state, t))
 
 
-# Resuelve la matriz de masas 2x2:
-# [M+m          m*l*cos(th)] [ddx ]   [u - c*dx + m*l*sin(th)*dth^2]
-# [m*l*cos(th)  J + m*l^2  ] [ddth] = [m*g*l*sin(th) - b*dth       ]
-func _accelerations(state: Vector4, u: float) -> Vector4:
-	var x_dot: float = state.z
-	var theta_dot: float = state.w
-	var sin_theta: float = sin(state.y)
-	var cos_theta: float = cos(state.y)
-
-	var a11: float = cart_mass + bob_mass
-	var a12: float = bob_mass * arm_length * cos_theta
-	var a22: float = inertia + bob_mass * arm_length * arm_length
-
-	var rhs1: float = (
-		u
-		- cart_viscous_friction * x_dot
-		+ bob_mass * arm_length * sin_theta * theta_dot * theta_dot
-	)
-	var rhs2: float = (
-		bob_mass * gravity * arm_length * sin_theta
-		- pivot_viscous_damping * theta_dot
-	)
-
-	var denominator: float = a11 * a22 - a12 * a12
-	if denominator <= 0.0:
-		return Vector4.ZERO
-
-	var cart_acceleration: float = (a22 * rhs1 - a12 * rhs2) / denominator
-	var theta_acceleration: float = (a11 * rhs2 - a12 * rhs1) / denominator
-
-	return Vector4(0.0, 0.0, cart_acceleration, theta_acceleration)
+# Modelo lineal ideal: dX/dt = A*X + B*u, con la misma ley de control
+# pero sin saturacion ni topes de pista (lo que "predice" el diseno lineal).
+func _linear_derivative(state: Vector4, t: float) -> Vector4:
+	var u: float = _control_law(state, t)
+	var X: Array[float] = [state.x, state.y, state.z, state.w]
+	var d: Array[float] = [0.0, 0.0, 0.0, 0.0]
+	for i in range(4):
+		var s: float = B_lin[i] * u
+		for j in range(4):
+			s += A_lin[i * 4 + j] * X[j]
+		d[i] = s
+	return Vector4(d[0], d[1], d[2], d[3])
 
 
 # ============================================================
@@ -471,7 +590,7 @@ func update_visuals() -> void:
 	cart_sprite.position = pivot
 
 	# theta se mide desde la vertical superior; en Godot +Y apunta hacia abajo.
-	var arm_length_px: float = arm_length * pixels_per_meter
+	var arm_length_px: float = modelo.l * pixels_per_meter
 	var bob_offset: Vector2 = Vector2(sin(theta), -cos(theta)) * arm_length_px
 
 	bob_sprite.position = pivot + bob_offset
@@ -484,6 +603,42 @@ func update_visuals() -> void:
 			link_sprite.scale.y = arm_length_px / tex_height
 
 	queue_redraw()
+	if linear_overlay:
+		linear_overlay.queue_redraw()
+
+
+func _update_linear_label() -> void:
+	if lbl_linear == null:
+		return
+	if not linear_available:
+		lbl_linear.text = linear_status
+		lbl_linear.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
+	elif not chk_linear.button_pressed:
+		lbl_linear.text = linear_status
+		lbl_linear.remove_theme_color_override("font_color")
+	else:
+		lbl_linear.text = "Δθ actual: %.2f°   máx: %.2f°" % [
+			rad_to_deg(absf(theta - linear_state.y)), rad_to_deg(linear_max_angle_gap)]
+		lbl_linear.add_theme_color_override("font_color", Color(1.0, 0.45, 0.85))
+
+
+# Pendulo "fantasma" del modelo lineal, dibujado encima de los sprites.
+func _draw_linear_overlay() -> void:
+	if not _linear_enabled():
+		return
+
+	var color := Color(1.0, 0.45, 0.85, 0.85)
+	var track_y: float = cart_sprite.position.y
+	var pivot := Vector2(linear_state.x * pixels_per_meter, track_y)
+
+	var cart_size := Vector2(32.0, 32.0)
+	if cart_sprite.texture:
+		cart_size = cart_sprite.texture.get_size() * cart_sprite.scale
+	linear_overlay.draw_rect(Rect2(pivot - cart_size * 0.5, cart_size), color, false, 2.0)
+
+	var tip: Vector2 = pivot + Vector2(sin(linear_state.y), -cos(linear_state.y)) * modelo.l * pixels_per_meter
+	linear_overlay.draw_line(pivot, tip, color, 2.0)
+	linear_overlay.draw_circle(tip, 5.0, color)
 
 
 func _draw() -> void:

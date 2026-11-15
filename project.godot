@@ -21,7 +21,6 @@ Globals="*uid://dbov5rirqsgcj"
 [display]
 
 window/stretch/mode="canvas_items"
-window/stretch/aspect="expand"
 
 [physics]
 

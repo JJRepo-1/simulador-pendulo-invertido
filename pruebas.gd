@@ -7,7 +7,7 @@ var penduloLineal : PackedScene = load("res://pendulo2.tscn")
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
-	get_window().content_scale_size = Vector2i(720, 380)
+	get_tree().root.content_scale_size = Vector2i(720, 380)
 	var pendulo: PackedScene = null
 	match Globals.PenduloSeleccion:
 		0:

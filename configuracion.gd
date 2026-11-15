@@ -14,10 +14,13 @@ extends Control
 @onready var input_kdtheta: SpinBox = $VBoxContainer/kdteta
 @onready var notificar: Label = $Label
 @onready var timerrr: Timer = $Timer
+@onready var editor_lineal: EditorModeloLineal = $ModeloLineal
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	notificar.hide()
+	notificar.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	notificar.size.x = 370.0
 # Rellenar los campos con los valores almacenados en Globals
 # 1. Configurar precision y rangos ANTES de asignar los valores
 	var k_boxes: Array[SpinBox] = [input_kx, input_ktheta, input_kdx, input_kdtheta]
@@ -53,6 +56,30 @@ func _ready() -> void:
 	input_kdx.value = Globals.K.z
 	input_kdtheta.value = Globals.K.w
 
+	# 3. Editor del modelo lineal: se evalua con los parametros de esta pantalla
+	editor_lineal.cargar(Globals.lineal_aux, Globals.lineal_A, Globals.lineal_B)
+	editor_lineal.cargar_no_lineal(Globals.no_lineal_aux, Globals.no_lineal_ddx, Globals.no_lineal_ddth)
+	editor_lineal.actualizar_parametros(_parametros_actuales())
+	for box: SpinBox in [input_cart_mass, input_bob_mass, input_arm_length,
+			input_inertia, input_cart_friction, input_pivot_damping]:
+		box.value_changed.connect(_on_parametro_cambiado)
+
+
+func _parametros_actuales() -> Dictionary:
+	return {
+		"M": input_cart_mass.value,
+		"m": input_bob_mass.value,
+		"l": input_arm_length.value,
+		"J": input_inertia.value,
+		"g": Globals.gravity,
+		"c": input_cart_friction.value,
+		"b": input_pivot_damping.value,
+	}
+
+
+func _on_parametro_cambiado(_valor: float) -> void:
+	editor_lineal.actualizar_parametros(_parametros_actuales())
+
 
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
@@ -76,6 +103,23 @@ func _on_button_pressed() -> void:
 		input_kdx.value,
 		input_kdtheta.value
 	)
+
+	Globals.lineal_aux = editor_lineal.obtener_aux()
+	Globals.lineal_A = editor_lineal.obtener_A()
+	Globals.lineal_B = editor_lineal.obtener_B()
+	Globals.no_lineal_aux = editor_lineal.obtener_nl_aux()
+	Globals.no_lineal_ddx = editor_lineal.obtener_ddx()
+	Globals.no_lineal_ddth = editor_lineal.obtener_ddth()
+
+	var avisos: Array[String] = []
+	if editor_lineal.tiene_errores_no_lineal():
+		avisos.append("ecuaciones no lineales con errores (se usará el modelo de referencia)")
+	if editor_lineal.tiene_errores():
+		avisos.append("A/B con errores (no habrá comparación lineal)")
+	if avisos.is_empty():
+		notificar.text = "Datos guardados correctamente"
+	else:
+		notificar.text = "Datos guardados. Ojo: " + "; ".join(avisos) + "."
 	notificar.show()
 	timerrr.start()
 

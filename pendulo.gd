@@ -7,14 +7,13 @@ extends Node2D
 #   estado X = [x, theta, x_dot, theta_dot] en SI,
 #   theta = 0 -> pendulo vertical hacia arriba.
 
-# --- Parametros fisicos (se cargan desde Globals) ---
-var cart_mass: float = 2.0               # M [kg]
-var bob_mass: float = 0.2                # m [kg]
-var arm_length: float = 0.5              # l [m]
-var inertia: float = 0.05                # J [kg*m^2]
-var gravity: float = 9.81                # g [m/s^2]
-var cart_viscous_friction: float = 0.10  # [N*s/m]
-var pivot_viscous_damping: float = 0.005 # [N*m*s/rad]
+# --- Parametros fisicos y modelo de referencia (desde Globals) ---
+var modelo: PenduloModelo = PenduloModelo.new()
+
+# Planta simulada: ecuaciones no lineales del usuario (Configuracion)
+# o, si tienen errores, el modelo de referencia. Igual que pendulo_2.gd.
+var planta = null
+var planta_es_usuario: bool = false
 
 @export_group("Condiciones Iniciales")
 @export var initial_cart_x_px: float = 0.0   # Posicion inicial [px]
@@ -44,18 +43,21 @@ var theta_velocity: float = 0.0
 
 
 func _ready() -> void:
-	cart_mass = Globals.cart_mass
-	bob_mass = Globals.bob_mass
-	arm_length = Globals.arm_length
-	inertia = Globals.inertia
-	gravity = Globals.gravity
-	cart_viscous_friction = Globals.cart_viscous_friction
-	pivot_viscous_damping = Globals.pivot_viscous_damping
+	modelo = Globals.crear_modelo()
 
-	if pixels_per_meter <= 0.0 or arm_length <= 0.0 or cart_mass <= 0.0 \
-			or bob_mass <= 0.0 or inertia < 0.0 or max_integration_step <= 0.0 \
-			or max_x <= min_x:
-		push_error("Parametros fisicos o numericos invalidos.")
+	var r: Dictionary = Globals.crear_modelo_usuario()
+	planta_es_usuario = r.ok
+	planta = r.modelo if r.ok else modelo
+	if not r.ok:
+		push_warning("Ecuaciones no lineales del usuario con errores; se usa el modelo de referencia.")
+
+	var error_modelo: String = modelo.validar()
+	if error_modelo != "":
+		push_error(error_modelo)
+		set_physics_process(false)
+		return
+	if pixels_per_meter <= 0.0 or max_integration_step <= 0.0 or max_x <= min_x:
+		push_error("Parametros numericos o de representacion invalidos.")
 		set_physics_process(false)
 		return
 
@@ -83,6 +85,15 @@ func _physics_process(delta: float) -> void:
 		state = _rk4_step(state, h)
 		state = _enforce_cart_limits(state)
 
+	if planta_es_usuario and planta.error_ejecucion != "":
+		push_warning("Simulación detenida: " + planta.error_ejecucion)
+		set_physics_process(false)
+		return
+	if not (is_finite(state.x) and is_finite(state.y) and is_finite(state.z) and is_finite(state.w)):
+		push_warning("Simulación detenida: el estado dejó de ser finito.")
+		set_physics_process(false)
+		return
+
 	cart_x = state.x
 	theta = state.y
 	cart_velocity = state.z
@@ -91,42 +102,9 @@ func _physics_process(delta: float) -> void:
 	update_visuals()
 
 
-# ============================================================
-# MODELO DINAMICO NO LINEAL (identico a pendulo_2.gd con u = 0)
-# ============================================================
-# [M+m          m*l*cos(th)] [ddx ]   [u - c*dx + m*l*sin(th)*dth^2]
-# [m*l*cos(th)  J + m*l^2  ] [ddth] = [m*g*l*sin(th) - b*dth       ]
-
+# Planta no lineal con u = 0.
 func _state_derivative(state: Vector4) -> Vector4:
-	var u: float = 0.0
-
-	var x_dot: float = state.z
-	var theta_dot: float = state.w
-	var sin_theta: float = sin(state.y)
-	var cos_theta: float = cos(state.y)
-
-	var a11: float = cart_mass + bob_mass
-	var a12: float = bob_mass * arm_length * cos_theta
-	var a22: float = inertia + bob_mass * arm_length * arm_length
-
-	var rhs1: float = (
-		u
-		- cart_viscous_friction * x_dot
-		+ bob_mass * arm_length * sin_theta * theta_dot * theta_dot
-	)
-	var rhs2: float = (
-		bob_mass * gravity * arm_length * sin_theta
-		- pivot_viscous_damping * theta_dot
-	)
-
-	var denominator: float = a11 * a22 - a12 * a12
-	if denominator <= 0.0:
-		return Vector4(x_dot, theta_dot, 0.0, 0.0)
-
-	var cart_acceleration: float = (a22 * rhs1 - a12 * rhs2) / denominator
-	var theta_acceleration: float = (a11 * rhs2 - a12 * rhs1) / denominator
-
-	return Vector4(x_dot, theta_dot, cart_acceleration, theta_acceleration)
+	return planta.derivada(state, 0.0)
 
 
 func _rk4_step(state: Vector4, h: float) -> Vector4:
@@ -161,7 +139,7 @@ func update_visuals() -> void:
 	var pivot: Vector2 = Vector2(cart_x * pixels_per_meter, cart_sprite.position.y)
 	cart_sprite.position = pivot
 
-	var arm_length_px: float = arm_length * pixels_per_meter
+	var arm_length_px: float = modelo.l * pixels_per_meter
 	var bob_offset: Vector2 = Vector2(sin(theta), -cos(theta)) * arm_length_px
 
 	bob_sprite.position = pivot + bob_offset
