@@ -1,6 +1,19 @@
 extends Node2D
 
 # ============================================================
+# PENDULO INVERTIDO CON CONTROL LINEAL POR REALIMENTACION DE ESTADOS
+# ============================================================
+# Equivale a codigo4.m (modelo lineal) y pruebaCodigo4vnolineal.m
+# (el mismo controlador aplicado al modelo no lineal):
+#
+#   u = -K * X,   X = [x, theta, x', theta']
+#
+# El controlador lleva el sistema al equilibrio X = 0 (carro en x = 0,
+# pendulo vertical) desde la posicion y el angulo iniciales asignados.
+# La planta "real" son las ecuaciones de movimiento escritas en
+# Configuracion; en paralelo se simula dX/dt = A*X + B*u para comparar.
+
+# ============================================================
 # 1. PARAMETROS (se cargan desde el Autoload Globals en _ready)
 # ============================================================
 
@@ -21,30 +34,23 @@ var K: Vector4 = Vector4.ZERO
 
 
 # ============================================================
-# 2. CONTROLADOR Y TRAYECTORIA
+# 2. CONTROLADOR Y CONDICIONES INICIALES
 # ============================================================
 
 @export_group("Controlador Lineal")
 @export var control_enabled: bool = true
-# Prealimentacion u_ff = (M+m)*ddx_ref + c*dx_ref
-@export var use_feedforward: bool = true
 
 @export_group("Condiciones Iniciales")
 @export var initial_cart_x_px: float = 0.0   # Posicion inicial [px]
-@export var initial_angle_deg: float = 20.0  # Perturbacion angular [grados]
+@export var initial_angle_deg: float = 20.0  # Angulo inicial [grados]
 
-@export_group("Seguimiento en Tiempo Real")
-@export var move_duration: float = 2.0       # Tiempo [s] para llegar al nuevo punto
+# Angulo inicial maximo que se puede asignar y umbral de la advertencia
+const MAX_INITIAL_ANGLE_DEG: float = 40.0
+const WARNING_ANGLE_DEG: float = 30.0
 
 @export_group("Comparacion con Modelo Lineal")
 # Simula en paralelo dX/dt = A*X + B*u con las A y B escritas en Configuracion
 @export var compare_linear: bool = true
-
-# Variables internas de la trayectoria polinomica de 5o orden (metros)
-var traj_time: float = 0.0
-var traj_duration: float = 1.0
-var traj_target_m: float = 0.0
-var poly_c: Array[float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 
 # ============================================================
@@ -78,7 +84,7 @@ var theta_velocity: float = 0.0
 # Fuerza de control aplicada al final del ultimo paso [N]
 var applied_control_force: float = 0.0
 
-# --- Modelo lineal (fase 2) ---
+# --- Modelo lineal ---
 var linear_available: bool = false
 var linear_status: String = ""
 var A_lin := PackedFloat64Array()   # 16 valores por filas
@@ -97,9 +103,7 @@ var linear_max_angle_gap: float = 0.0  # max |theta_nl - theta_lin| [rad]
 
 @onready var input_pos_inicial: SpinBox = $CanvasLayer/VBoxContainer/SpinBox
 @onready var input_angulo_inicial: SpinBox = $CanvasLayer/VBoxContainer/angle
-@onready var input_nueva_pos: SpinBox = $CanvasLayer/VBoxContainer/SpinBox2
 @onready var btn_simular: Button = $CanvasLayer/VBoxContainer/Simular
-@onready var btn_mover: Button = $CanvasLayer/VBoxContainer/Button
 
 @onready var plot_pos: RealTimePlot = $CanvasLayer/plots/Control
 @onready var plot_angle: RealTimePlot = $CanvasLayer/plots/Control3
@@ -107,6 +111,7 @@ var linear_max_angle_gap: float = 0.0  # max |theta_nl - theta_lin| [rad]
 @onready var plot_ang_vel: RealTimePlot = $CanvasLayer/plots/Control2
 
 # Creados por codigo
+var lbl_angle_warning: Label
 var chk_linear: CheckBox
 var lbl_linear: Label
 var lbl_plant: Label
@@ -200,8 +205,8 @@ func _setup_plots() -> void:
 	plot_angle.unit = "°"
 	plot_angle.line_color = Color(1.0, 0.75, 0.2)
 	plot_angle.auto_scale = false
-	plot_angle.y_min = -40.0
-	plot_angle.y_max = 40.0
+	plot_angle.y_min = -45.0
+	plot_angle.y_max = 45.0
 
 	plot_vel.title = "Velocidad Carro (dx)"
 	plot_vel.unit = "m/s"
@@ -226,22 +231,25 @@ func _setup_inputs() -> void:
 	input_pos_inicial.suffix = "px"
 	input_pos_inicial.value = clampf(initial_cart_x_px, min_x, max_x)
 
-	input_angulo_inicial.min_value = -20.0
-	input_angulo_inicial.max_value = 20.0
-	input_angulo_inicial.step = 1.0
+	input_angulo_inicial.min_value = -MAX_INITIAL_ANGLE_DEG
+	input_angulo_inicial.max_value = MAX_INITIAL_ANGLE_DEG
+	input_angulo_inicial.step = 0.1
 	input_angulo_inicial.prefix = "Ang:"
 	input_angulo_inicial.suffix = "°"
-	input_angulo_inicial.value = initial_angle_deg
+	input_angulo_inicial.value = clampf(initial_angle_deg, -MAX_INITIAL_ANGLE_DEG, MAX_INITIAL_ANGLE_DEG)
 
-	input_nueva_pos.min_value = min_x
-	input_nueva_pos.max_value = max_x
-	input_nueva_pos.step = 1.0
-	input_nueva_pos.prefix = "Ref:"
-	input_nueva_pos.suffix = "px"
-	input_nueva_pos.value = input_pos_inicial.value
+	# Advertencia de seguridad debajo del angulo inicial
+	lbl_angle_warning = Label.new()
+	lbl_angle_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl_angle_warning.custom_minimum_size = Vector2(220.0, 0.0)
+	lbl_angle_warning.add_theme_font_size_override("font_size", 13)
+	lbl_angle_warning.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2))
+	lbl_angle_warning.text = ("⚠ Advertencia: con más de %d° el péndulo sale de la zona donde "
+		+ "el modelo lineal es válido; el controlador podría no estabilizarlo.") % int(WARNING_ANGLE_DEG)
+	lbl_angle_warning.visible = false
+	input_angulo_inicial.add_sibling(lbl_angle_warning)
 
 	btn_simular.text = "Simular"
-	btn_mover.text = "Ir a posición"
 
 	if not btn_simular.pressed.is_connected(_on_btn_simular_pressed):
 		btn_simular.pressed.connect(_on_btn_simular_pressed)
@@ -303,6 +311,7 @@ func _linear_enabled() -> bool:
 # ============================================================
 
 func _on_preview_changed(_new_value: float) -> void:
+	_update_angle_warning()
 	if not is_simulating:
 		reset_state(input_pos_inicial.value, input_angulo_inicial.value)
 
@@ -322,43 +331,9 @@ func _on_linear_toggled(_pressed: bool) -> void:
 	update_visuals()
 
 
-# Nueva referencia: genera un polinomio de 5o orden desde el estado
-# actual de la referencia (x0, v0, a0) hasta (xf, 0, 0) en T segundos.
-func _on_button_pressed() -> void:
-	if not is_simulating:
-		return
-
-	input_nueva_pos.apply()
-	var new_target_px: float = clampf(input_nueva_pos.value, min_x, max_x)
-	var xf: float = new_target_px / pixels_per_meter
-
-	var current_ref: Vector3 = _evaluate_trajectory(traj_time)
-	var x0: float = current_ref.x
-	var v0: float = current_ref.y
-	var a0: float = current_ref.z
-
-	var T: float = maxf(move_duration, 0.2)
-	var T2: float = T * T
-	var T3: float = T2 * T
-	var T4: float = T3 * T
-	var T5: float = T4 * T
-
-	var c0: float = x0
-	var c1: float = v0
-	var c2: float = 0.5 * a0
-
-	var dx: float = xf - (c0 + c1 * T + c2 * T2)
-	var dv: float = -(c1 + 2.0 * c2 * T)
-	var da: float = -(2.0 * c2)
-
-	var c3: float = (10.0 * dx - 4.0 * dv * T + 0.5 * da * T2) / T3
-	var c4: float = (-15.0 * dx + 7.0 * dv * T - da * T2) / T4
-	var c5: float = (6.0 * dx - 3.0 * dv * T + 0.5 * da * T2) / T5
-
-	poly_c = [c0, c1, c2, c3, c4, c5]
-	traj_target_m = xf
-	traj_duration = T
-	traj_time = 0.0
+func _update_angle_warning() -> void:
+	if lbl_angle_warning:
+		lbl_angle_warning.visible = absf(input_angulo_inicial.value) > WARNING_ANGLE_DEG
 
 
 # ============================================================
@@ -366,6 +341,7 @@ func _on_button_pressed() -> void:
 # ============================================================
 
 func reset_state(start_x_px: float, start_angle_deg: float) -> void:
+	start_angle_deg = clampf(start_angle_deg, -MAX_INITIAL_ANGLE_DEG, MAX_INITIAL_ANGLE_DEG)
 	cart_x = clampf(
 		start_x_px / pixels_per_meter,
 		min_x / pixels_per_meter,
@@ -389,18 +365,12 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 	linear_state = Vector4(cart_x, theta, 0.0, 0.0)
 	linear_max_angle_gap = 0.0
 
-	# Referencia en reposo sobre la posicion inicial
-	traj_target_m = cart_x
-	traj_time = 0.0
-	traj_duration = 1.0
-	poly_c = [cart_x, 0.0, 0.0, 0.0, 0.0, 0.0]
-	input_nueva_pos.value = cart_x * pixels_per_meter
-
 	plot_pos.clear()
 	plot_angle.clear()
 	plot_vel.clear()
 	plot_ang_vel.clear()
 
+	_update_angle_warning()
 	_update_linear_label()
 	update_visuals()
 
@@ -425,11 +395,10 @@ func _physics_process(delta: float) -> void:
 	var use_linear: bool = _linear_enabled()
 
 	for _i in range(substeps):
-		state = _rk4_step(state, traj_time, h)
+		state = _rk4_step(state, h)
 		state = _enforce_cart_limits(state)
 		if use_linear:
-			linear_state = _rk4_step_linear(linear_state, traj_time, h)
-		traj_time += h
+			linear_state = _rk4_step_linear(linear_state, h)
 
 	# Si las ecuaciones del usuario fallan (division entre cero, valores no
 	# finitos), se detiene la simulacion y se informa en pantalla.
@@ -444,20 +413,19 @@ func _physics_process(delta: float) -> void:
 	theta = state.y
 	cart_velocity = state.z
 	theta_velocity = state.w
-	applied_control_force = _control_force(state, traj_time)
+	applied_control_force = _control_force(state)
 
 	update_visuals()
 
-	var ref_x_actual: float = _evaluate_trajectory(traj_time).x
 	if use_linear:
 		linear_max_angle_gap = maxf(linear_max_angle_gap, absf(theta - linear_state.y))
-		plot_pos.add_sample(cart_x, ref_x_actual, linear_state.x)
+		plot_pos.add_sample(cart_x, 0.0, linear_state.x)
 		plot_angle.add_sample(rad_to_deg(theta), NAN, rad_to_deg(linear_state.y))
 		plot_vel.add_sample(cart_velocity, NAN, linear_state.z)
 		plot_ang_vel.add_sample(rad_to_deg(theta_velocity), NAN, rad_to_deg(linear_state.w))
 		_update_linear_label()
 	else:
-		plot_pos.add_sample(cart_x, ref_x_actual)
+		plot_pos.add_sample(cart_x, 0.0)
 		plot_angle.add_sample(rad_to_deg(theta))
 		plot_vel.add_sample(cart_velocity)
 		plot_ang_vel.add_sample(rad_to_deg(theta_velocity))
@@ -467,54 +435,40 @@ func _physics_process(delta: float) -> void:
 # 10. INTEGRADORES RUNGE-KUTTA DE CUARTO ORDEN
 # ============================================================
 
-func _rk4_step(state: Vector4, t: float, h: float) -> Vector4:
-	var k1: Vector4 = _state_derivative(state, t)
-	var k2: Vector4 = _state_derivative(state + k1 * (h * 0.5), t + h * 0.5)
-	var k3: Vector4 = _state_derivative(state + k2 * (h * 0.5), t + h * 0.5)
-	var k4: Vector4 = _state_derivative(state + k3 * h, t + h)
+func _rk4_step(state: Vector4, h: float) -> Vector4:
+	var k1: Vector4 = _state_derivative(state)
+	var k2: Vector4 = _state_derivative(state + k1 * (h * 0.5))
+	var k3: Vector4 = _state_derivative(state + k2 * (h * 0.5))
+	var k4: Vector4 = _state_derivative(state + k3 * h)
 	return state + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
 
 
-func _rk4_step_linear(state: Vector4, t: float, h: float) -> Vector4:
-	var k1: Vector4 = _linear_derivative(state, t)
-	var k2: Vector4 = _linear_derivative(state + k1 * (h * 0.5), t + h * 0.5)
-	var k3: Vector4 = _linear_derivative(state + k2 * (h * 0.5), t + h * 0.5)
-	var k4: Vector4 = _linear_derivative(state + k3 * h, t + h)
+func _rk4_step_linear(state: Vector4, h: float) -> Vector4:
+	var k1: Vector4 = _linear_derivative(state)
+	var k2: Vector4 = _linear_derivative(state + k1 * (h * 0.5))
+	var k3: Vector4 = _linear_derivative(state + k2 * (h * 0.5))
+	var k4: Vector4 = _linear_derivative(state + k3 * h)
 	return state + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
 
 
 # ============================================================
-# 11. CONTROLADOR LINEAL (realimentacion de estado por error)
+# 11. CONTROLADOR LINEAL: u = -K * X
 # ============================================================
-# u = u_ff - K * (X - X_ref), con X_ref = [x_ref, 0, dx_ref, 0].
-# Equivale a u = -K*X + Nbar*r de MATLAB (Nbar = K(1)).
 
-func _control_law(state: Vector4, t: float) -> float:
+func _control_law(state: Vector4) -> float:
 	if not control_enabled:
 		return 0.0
-
-	var ref: Vector3 = _evaluate_trajectory(t)
-
-	var x_error: float = state.x - ref.x
-	var theta_error: float = wrapf(state.y, -PI, PI)
-	var dx_error: float = state.z - ref.y
-	var dtheta_error: float = state.w
-
-	var u_ff: float = 0.0
-	if use_feedforward:
-		u_ff = (modelo.M + modelo.m) * ref.z + modelo.c * ref.y
-
-	return u_ff - (
-		K.x * x_error +
-		K.y * theta_error +
-		K.z * dx_error +
-		K.w * dtheta_error
+	return -(
+		K.x * state.x +
+		K.y * wrapf(state.y, -PI, PI) +
+		K.z * state.z +
+		K.w * state.w
 	)
 
 
 # Fuerza que recibe la planta no lineal: ley de control con saturacion.
-func _control_force(state: Vector4, t: float) -> float:
-	return clampf(_control_law(state, t), -max_force_newtons, max_force_newtons)
+func _control_force(state: Vector4) -> float:
+	return clampf(_control_law(state), -max_force_newtons, max_force_newtons)
 
 
 # ============================================================
@@ -522,14 +476,14 @@ func _control_force(state: Vector4, t: float) -> float:
 # ============================================================
 
 # Planta no lineal: ecuaciones del usuario o modelo de referencia
-func _state_derivative(state: Vector4, t: float) -> Vector4:
-	return planta.derivada(state, _control_force(state, t))
+func _state_derivative(state: Vector4) -> Vector4:
+	return planta.derivada(state, _control_force(state))
 
 
-# Modelo lineal ideal: dX/dt = A*X + B*u, con la misma ley de control
-# pero sin saturacion ni topes de pista (lo que "predice" el diseno lineal).
-func _linear_derivative(state: Vector4, t: float) -> Vector4:
-	var u: float = _control_law(state, t)
+# Modelo lineal: dX/dt = A*X + B*u, con la misma ley de control pero sin
+# saturacion ni topes de pista (lo que "predice" el diseno lineal, codigo4.m).
+func _linear_derivative(state: Vector4) -> Vector4:
+	var u: float = _control_law(state)
 	var X: Array[float] = [state.x, state.y, state.z, state.w]
 	var d: Array[float] = [0.0, 0.0, 0.0, 0.0]
 	for i in range(4):
@@ -541,28 +495,7 @@ func _linear_derivative(state: Vector4, t: float) -> Vector4:
 
 
 # ============================================================
-# 13. TRAYECTORIA DE REFERENCIA
-# ============================================================
-# Devuelve (x_ref, dx_ref, ddx_ref) en unidades SI.
-
-func _evaluate_trajectory(t: float) -> Vector3:
-	if t >= traj_duration:
-		return Vector3(traj_target_m, 0.0, 0.0)
-
-	var t2: float = t * t
-	var t3: float = t2 * t
-	var t4: float = t3 * t
-	var t5: float = t4 * t
-
-	var x_ref: float = poly_c[0] + poly_c[1]*t + poly_c[2]*t2 + poly_c[3]*t3 + poly_c[4]*t4 + poly_c[5]*t5
-	var dx_ref: float = poly_c[1] + 2.0*poly_c[2]*t + 3.0*poly_c[3]*t2 + 4.0*poly_c[4]*t3 + 5.0*poly_c[5]*t4
-	var ddx_ref: float = 2.0*poly_c[2] + 6.0*poly_c[3]*t + 12.0*poly_c[4]*t2 + 20.0*poly_c[5]*t3
-
-	return Vector3(x_ref, dx_ref, ddx_ref)
-
-
-# ============================================================
-# 14. LIMITES FISICOS DEL CARRITO
+# 13. LIMITES FISICOS DEL CARRITO
 # ============================================================
 
 func _enforce_cart_limits(state: Vector4) -> Vector4:
@@ -582,7 +515,7 @@ func _enforce_cart_limits(state: Vector4) -> Vector4:
 
 
 # ============================================================
-# 15. REPRESENTACION GRAFICA
+# 14. REPRESENTACION GRAFICA
 # ============================================================
 
 func update_visuals() -> void:
@@ -649,8 +582,7 @@ func _draw() -> void:
 
 	var color_pista := Color(0.6, 0.6, 0.6, 0.35)
 	var color_limite := Color(0.95, 0.25, 0.25, 0.95)
-	var color_objetivo := Color(0.2, 0.85, 0.4, 0.95)
-	var color_ref_movil := Color(1.0, 0.8, 0.2, 0.95)
+	var color_equilibrio := Color(0.2, 0.85, 0.4, 0.95)
 
 	# 1. Pista entre los limites
 	draw_line(Vector2(min_x, track_y), Vector2(max_x, track_y), color_pista, 2.0)
@@ -675,21 +607,15 @@ func _draw() -> void:
 			color_limite, 3.0
 		)
 
-	# 3. Destino final asignado
-	var target_px: float = traj_target_m * pixels_per_meter
+	# 3. Punto de equilibrio al que lleva el controlador (x = 0)
 	draw_dashed_line(
-		Vector2(target_px, track_y - 60.0),
-		Vector2(target_px, track_y + 25.0),
-		color_objetivo, 2.0, 6.0
+		Vector2(0.0, track_y - 60.0),
+		Vector2(0.0, track_y + 25.0),
+		color_equilibrio, 2.0, 6.0
 	)
-	var punta := Vector2(target_px, track_y + 24.0)
-	var triangulo := PackedVector2Array([
+	var punta := Vector2(0.0, track_y + 24.0)
+	draw_colored_polygon(PackedVector2Array([
 		punta,
 		punta + Vector2(-8.0, 14.0),
 		punta + Vector2(8.0, 14.0)
-	])
-	draw_colored_polygon(triangulo, color_objetivo)
-
-	# 4. Referencia instantanea de la trayectoria suave
-	var ref_actual_px: float = _evaluate_trajectory(traj_time).x * pixels_per_meter
-	draw_circle(Vector2(ref_actual_px, track_y), 5.0, color_ref_movil)
+	]), color_equilibrio)

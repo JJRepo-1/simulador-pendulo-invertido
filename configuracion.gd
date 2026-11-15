@@ -58,7 +58,7 @@ func _ready() -> void:
 
 	# 3. Editor del modelo lineal: se evalua con los parametros de esta pantalla
 	editor_lineal.cargar(Globals.lineal_aux, Globals.lineal_A, Globals.lineal_B)
-	editor_lineal.cargar_no_lineal(Globals.no_lineal_aux, Globals.no_lineal_ddx, Globals.no_lineal_ddth)
+	editor_lineal.cargar_no_lineal(Globals.no_lineal_carro, Globals.no_lineal_pendulo)
 	editor_lineal.actualizar_parametros(_parametros_actuales())
 	for box: SpinBox in [input_cart_mass, input_bob_mass, input_arm_length,
 			input_inertia, input_cart_friction, input_pivot_damping]:
@@ -107,9 +107,8 @@ func _on_button_pressed() -> void:
 	Globals.lineal_aux = editor_lineal.obtener_aux()
 	Globals.lineal_A = editor_lineal.obtener_A()
 	Globals.lineal_B = editor_lineal.obtener_B()
-	Globals.no_lineal_aux = editor_lineal.obtener_nl_aux()
-	Globals.no_lineal_ddx = editor_lineal.obtener_ddx()
-	Globals.no_lineal_ddth = editor_lineal.obtener_ddth()
+	Globals.no_lineal_carro = editor_lineal.obtener_ecuacion_carro()
+	Globals.no_lineal_pendulo = editor_lineal.obtener_ecuacion_pendulo()
 
 	var avisos: Array[String] = []
 	if editor_lineal.tiene_errores_no_lineal():

@@ -5,8 +5,14 @@ extends RefCounted
 # FORMULAS DEL USUARIO: COMPILADOR Y EVALUADOR
 # ============================================================
 # Se usa para:
-#  - el modelo no lineal  x'' = f(...), theta'' = g(...)   (ModeloFormulas)
-#  - el modelo lineal     A (4x4) y B (4x1)
+#  - el modelo no lineal: dos ecuaciones de movimiento con '='
+#    (dinamica del carro y del pendulo), ver ModeloFormulas
+#  - el modelo lineal: A (4x4) y B (4x1)
+#
+# Notacion admitida para el estado (ademas de x, theta, dx, dtheta, ddx, ddtheta):
+#   θ (o theta), x' y θ' (velocidades), x'' y θ'' (aceleraciones).
+#   Funciones de un argumento sin parentesis: senθ, cosθ, sen θ'.
+#   (cosθ^2 = (cosθ)^2; para argumentos compuestos usa parentesis: cos(2*θ)).
 #
 # Interprete propio (descenso recursivo) en lugar de la clase Expression:
 #  - '^' es potencia, como en MATLAB (en Expression es XOR).
@@ -22,10 +28,10 @@ extends RefCounted
 
 const VARIABLES_BASE: Array[String] = ["M", "m", "l", "J", "g", "c", "b"]
 const VARIABLES_ESTADO: Array[String] = ["x", "theta", "dx", "dtheta", "u"]
-const VARIABLE_DDX: String = "ddx"
+const VARIABLES_ACELERACION: Array[String] = ["ddx", "ddtheta"]
 
 const FUNCIONES: Dictionary = {
-	"sin": 1, "cos": 1, "tan": 1,
+	"sin": 1, "sen": 1, "cos": 1, "tan": 1,
 	"asin": 1, "acos": 1, "atan": 1, "atan2": 2,
 	"sqrt": 1, "exp": 1, "log": 1, "abs": 1, "sign": 1,
 	"pow": 2, "min": 2, "max": 2,
@@ -33,21 +39,22 @@ const FUNCIONES: Dictionary = {
 
 const CONSTANTES: Dictionary = {"pi": PI, "PI": PI}
 
-# --- Modelo no lineal de referencia escrito en forma explicita ---
-# Equivale a resolver la matriz de masas de modelo_pendulo.gd.
-const EJEMPLO_NL_AUX: String = "a12 = m*l*cos(theta)\nD = (M + m)*(J + m*l^2) - a12^2\nF1 = u - c*dx + m*l*sin(theta)*dtheta^2\nF2 = m*g*l*sin(theta) - b*dtheta"
-const EJEMPLO_DDX: String = "((J + m*l^2)*F1 - a12*F2)/D"
-const EJEMPLO_DDTH: String = "((M + m)*F2 - a12*F1)/D"
+# --- Ecuaciones de movimiento del sistema ideal (sin friccion) ---
+const EJEMPLO_CARRO: String = "(M+m)*x''+m*l*θ''*cosθ-m*l*θ'^2*senθ = u"
+const EJEMPLO_PENDULO: String = "(J+m*l^2)*θ''+m*l*x''*cosθ-m*g*l*senθ = 0"
 
-# --- Linealizacion del modelo de referencia en X = 0, u = 0 ---
-# Con c = b = 0 se reduce a las matrices del script de MATLAB.
+# --- Mismas ecuaciones con friccion viscosa (c en el carro, b en el pivote) ---
+const EJEMPLO_CARRO_FRICCION: String = "(M+m)*x''+m*l*θ''*cosθ-m*l*θ'^2*senθ + c*x' = u"
+const EJEMPLO_PENDULO_FRICCION: String = "(J+m*l^2)*θ''+m*l*x''*cosθ-m*g*l*senθ + b*θ' = 0"
+
+# --- Linealizacion del sistema ideal en X = 0, u = 0 (script de MATLAB) ---
 const EJEMPLO_AUX: String = "Delta = (M + m)*J + M*m*l^2"
 
 const EJEMPLO_A: Array[String] = [
 	"0", "0", "1", "0",
 	"0", "0", "0", "1",
-	"0", "-(m^2*g*l^2)/Delta", "-(J + m*l^2)*c/Delta", "m*l*b/Delta",
-	"0", "(M + m)*m*g*l/Delta", "m*l*c/Delta", "-(M + m)*b/Delta",
+	"0", "-(m^2*g*l^2)/Delta", "0", "0",
+	"0", "(M + m)*m*g*l/Delta", "0", "0",
 ]
 
 const EJEMPLO_B: Array[String] = [
@@ -112,7 +119,7 @@ class Programa:
 
 	func _aplicar(nombre: String, a: float, b: float) -> float:
 		match nombre:
-			"sin": return sin(a)
+			"sin", "sen": return sin(a)
 			"cos": return cos(a)
 			"tan": return tan(a)
 			"asin": return asin(a)
@@ -155,11 +162,45 @@ static func compilar(formula: String, nombres: PackedStringArray,
 		programa.codigo = [Op.NUM, 0.0]
 		return {"ok": true, "programa": programa, "error": ""}
 
-	var c := _Compilador.new(texto, nombres, contexto)
+	var c := _Compilador.new(texto, nombres, contexto, 0)
 	c.compilar()
 	if c.error != "":
 		return {"ok": false, "programa": null, "error": c.error}
 	programa.codigo = c.codigo
+	return {"ok": true, "programa": programa, "error": ""}
+
+
+# Compila una ecuacion "izquierda = derecha" como el residuo
+# (izquierda) - (derecha), que vale 0 cuando la ecuacion se cumple.
+# Devuelve {"ok": bool, "programa": Programa, "error": String}.
+static func compilar_ecuacion(ecuacion: String, nombres: PackedStringArray,
+		contexto: String = "") -> Dictionary:
+	var texto: String = ecuacion.strip_edges(false, true).trim_suffix(";")
+	if texto.strip_edges().is_empty():
+		return {"ok": false, "programa": null, "error": "La ecuacion esta vacia."}
+	var partes: PackedStringArray = texto.split("=")
+	if partes.size() == 1:
+		return {"ok": false, "programa": null,
+			"error": "Falta el signo '=' (formato: lado izquierdo = lado derecho)."}
+	if partes.size() > 2:
+		return {"ok": false, "programa": null, "error": "La ecuacion debe tener un solo signo '='."}
+	if partes[0].strip_edges().is_empty():
+		return {"ok": false, "programa": null, "error": "Falta el lado izquierdo del '='."}
+	if partes[1].strip_edges().is_empty():
+		return {"ok": false, "programa": null,
+			"error": "Falta el lado derecho del '=' (escribe 0 si no hay nada)."}
+
+	var izq := _Compilador.new(partes[0], nombres, contexto, 0)
+	izq.compilar()
+	if izq.error != "":
+		return {"ok": false, "programa": null, "error": izq.error}
+	var der := _Compilador.new(partes[1], nombres, contexto, partes[0].length() + 1)
+	der.compilar()
+	if der.error != "":
+		return {"ok": false, "programa": null, "error": der.error}
+
+	var programa := Programa.new()
+	programa.codigo = izq.codigo + der.codigo + [Op.SUB, null]
 	return {"ok": true, "programa": programa, "error": ""}
 
 
@@ -204,7 +245,7 @@ static func leer_auxiliares(texto: String, reservados: PackedStringArray) -> Arr
 				item.error = "Linea %d: '%s' no es un nombre de variable valido." % [n + 1, item.nombre]
 			elif item.nombre in VARIABLES_BASE:
 				item.error = "Linea %d: '%s' es un parametro del modelo y no se puede redefinir." % [n + 1, item.nombre]
-			elif item.nombre in VARIABLES_ESTADO or item.nombre == VARIABLE_DDX:
+			elif item.nombre in VARIABLES_ESTADO or item.nombre in VARIABLES_ACELERACION:
 				item.error = "Linea %d: '%s' es una variable de estado y no se puede redefinir." % [n + 1, item.nombre]
 			elif FUNCIONES.has(item.nombre) or CONSTANTES.has(item.nombre) or item.nombre in reservados:
 				item.error = "Linea %d: '%s' es un nombre reservado o ya definido." % [n + 1, item.nombre]
@@ -298,6 +339,7 @@ class _Compilador:
 	var texto: String
 	var nombres: PackedStringArray
 	var contexto: String
+	var desplazamiento: int = 0   # posicion de este texto dentro de la ecuacion completa
 	var codigo: Array = []
 	var pos: int = 0
 	var error: String = ""
@@ -307,10 +349,11 @@ class _Compilador:
 	var valor: String = ""
 	var inicio: int = 0
 
-	func _init(t: String, n: PackedStringArray, ctx: String) -> void:
+	func _init(t: String, n: PackedStringArray, ctx: String, offset: int) -> void:
 		texto = t
 		nombres = n
 		contexto = ctx
+		desplazamiento = offset
 
 	func compilar() -> void:
 		_siguiente()
@@ -324,7 +367,7 @@ class _Compilador:
 
 	func _fallar(mensaje: String) -> void:
 		if error == "":
-			error = mensaje + " (posicion %d)" % (inicio + 1)
+			error = mensaje + " (posicion %d)" % (desplazamiento + inicio + 1)
 
 	# --- Analizador lexico ---
 
@@ -363,6 +406,13 @@ class _Compilador:
 			pos = fin
 			return
 
+		# θ es siempre un simbolo propio: "cosθ" = cos θ
+		if ch == "θ":
+			tipo = "id"
+			valor = "θ"
+			pos += 1
+			return
+
 		if _es_letra(ch):
 			var fin: int = pos
 			while fin < texto.length() and (_es_letra(texto[fin]) or _es_digito(texto[fin])):
@@ -375,7 +425,9 @@ class _Compilador:
 		tipo = "op"
 		valor = ch
 		pos += 1
-		if not ch in ["+", "-", "*", "/", "^", "(", ")", ","]:
+		if ch == "=":
+			_fallar("El signo '=' solo se usa en las ecuaciones de movimiento.")
+		elif not ch in ["+", "-", "*", "/", "^", "(", ")", ",", "'", "\""]:
 			_fallar("Caracter no valido '%s'." % ch)
 
 	func _es_digito(ch: String) -> bool:
@@ -442,24 +494,41 @@ class _Compilador:
 			return
 
 		if tipo == "id":
-			var nombre: String = valor
+			var escrito: String = valor
 			_siguiente()
 			if _es_op("("):
-				_llamada(nombre)
+				_llamada(escrito)
 				return
+
+			# Funcion de un argumento sin parentesis: senθ, cos θ', sin x
+			if FUNCIONES.has(escrito) and (tipo == "id" or tipo == "num"):
+				if FUNCIONES[escrito] != 1:
+					_fallar("La funcion '%s' necesita parentesis." % escrito)
+					return
+				_primario()
+				_emitir(Op.FUNC, escrito)
+				return
+
+			# Apostrofos = derivadas respecto al tiempo (x', θ'', x")
+			var primas: int = 0
+			while _es_op("'") or _es_op("\""):
+				primas += 1 if valor == "'" else 2
+				_siguiente()
+			var nombre: String = _nombre_canonico(escrito, primas)
+			if nombre == "":
+				return
+
 			var indice: int = nombres.find(nombre)
 			if indice >= 0:
 				_emitir(Op.VAR, indice)
 			elif CONSTANTES.has(nombre):
 				_emitir(Op.NUM, CONSTANTES[nombre])
 			elif FUNCIONES.has(nombre):
-				_fallar("La funcion '%s' necesita parentesis." % nombre)
-			elif contexto == "lineal" and (nombre in VARIABLES_ESTADO or nombre == VARIABLE_DDX):
-				_fallar("'%s' es una variable de estado: A y B deben ser constantes (evaluadas en el equilibrio)." % nombre)
-			elif contexto == "no_lineal" and nombre == VARIABLE_DDX:
-				_fallar("'ddx' solo se puede usar en la ecuacion de theta''.")
+				_fallar("La funcion '%s' necesita un argumento." % nombre)
+			elif contexto == "lineal" and (nombre in VARIABLES_ESTADO or nombre in VARIABLES_ACELERACION):
+				_fallar("'%s' es una variable de estado: A y B deben ser constantes (evaluadas en el equilibrio)." % escrito)
 			else:
-				_fallar("Variable desconocida '%s'." % nombre)
+				_fallar("Variable desconocida '%s'.%s" % [escrito, _pista_nombre(escrito)])
 			return
 
 		if _es_op("("):
@@ -475,6 +544,29 @@ class _Compilador:
 			_fallar("La formula termina de forma incompleta.")
 		else:
 			_fallar("Se esperaba un numero, una variable o '(' y aparecio '%s'." % valor)
+
+	# Traduce la notacion del estudiante al nombre interno de la variable.
+	# Devuelve "" (y marca el error) si los apostrofos no tienen sentido.
+	func _nombre_canonico(escrito: String, primas: int) -> String:
+		var base: String = "theta" if escrito == "θ" else escrito
+		if primas == 0:
+			return base
+		if base != "x" and base != "theta":
+			_fallar("Solo x y θ pueden llevar apostrofo (derivada); '%s' no." % escrito)
+			return ""
+		if primas > 2:
+			_fallar("Solo se admiten hasta segundas derivadas (%s'')." % escrito)
+			return ""
+		return ("d" if primas == 1 else "dd") + base
+
+	# Sugerencia para errores comunes como "costheta" o "senx".
+	func _pista_nombre(escrito: String) -> String:
+		for f: String in FUNCIONES:
+			if escrito.begins_with(f) and escrito.length() > f.length():
+				var resto: String = escrito.substr(f.length())
+				if resto in VARIABLES_ESTADO or resto in VARIABLES_ACELERACION:
+					return " ¿Quisiste decir %s(%s)?" % [f, resto]
+		return ""
 
 	func _llamada(nombre: String) -> void:
 		if not FUNCIONES.has(nombre):

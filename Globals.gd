@@ -22,10 +22,9 @@ var K: Vector4 = Vector4(
 
 
 # Modelo no lineal escrito por el usuario (pantalla de Configuracion):
-# x'' y theta'' en funcion de x, theta, dx, dtheta, u, parametros y auxiliares.
-var no_lineal_aux: String = FormulasLineales.EJEMPLO_NL_AUX
-var no_lineal_ddx: String = FormulasLineales.EJEMPLO_DDX
-var no_lineal_ddth: String = FormulasLineales.EJEMPLO_DDTH
+# ecuaciones de movimiento del carro y del pendulo. Por defecto, sistema ideal.
+var no_lineal_carro: String = FormulasLineales.EJEMPLO_CARRO
+var no_lineal_pendulo: String = FormulasLineales.EJEMPLO_PENDULO
 
 # Modelo lineal dX/dt = A*X + B*u escrito por el usuario como formulas
 # (pantalla de Configuracion). Variables: M, m, l, J, g, c, b y las auxiliares.
@@ -58,8 +57,7 @@ func crear_modelo() -> PenduloModelo:
 # Modelo no lineal con las ecuaciones que escribio el usuario.
 # Mismo diccionario que ModeloFormulas.construir().
 func crear_modelo_usuario() -> Dictionary:
-	return ModeloFormulas.construir(
-		parametros_modelo(), lineal_aux, no_lineal_aux, no_lineal_ddx, no_lineal_ddth)
+	return ModeloFormulas.construir(parametros_modelo(), no_lineal_carro, no_lineal_pendulo)
 
 func _ready() -> void:
 	pass # Replace with function body.

@@ -20,7 +20,7 @@ offset_bottom = 40.0
 [node name="Label" type="Label" parent="VBoxContainer" unique_id=332880895]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "Masa del carro"
+text = "Masa del carro = M"
 
 [node name="cartmass" type="SpinBox" parent="VBoxContainer" unique_id=1545373167]
 layout_mode = 2
@@ -29,7 +29,7 @@ step = 0.1
 [node name="Label2" type="Label" parent="VBoxContainer" unique_id=1305092518]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "Masa del pendulo"
+text = "Masa del péndulo = m"
 
 [node name="boobmass" type="SpinBox" parent="VBoxContainer" unique_id=267612134]
 layout_mode = 2
@@ -38,7 +38,7 @@ step = 0.1
 [node name="Label3" type="Label" parent="VBoxContainer" unique_id=169794548]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "Tamaño al centro del eslabon"
+text = "Distancia del pivote al centro de masa = l"
 
 [node name="armtamaño" type="SpinBox" parent="VBoxContainer" unique_id=2099708264]
 layout_mode = 2
@@ -47,7 +47,7 @@ step = 0.1
 [node name="Label4" type="Label" parent="VBoxContainer" unique_id=666724341]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "Momento de inercia"
+text = "Momento de inercia = J"
 
 [node name="inerciamomento" type="SpinBox" parent="VBoxContainer" unique_id=119045053]
 layout_mode = 2
@@ -56,7 +56,7 @@ step = 0.01
 [node name="Label5" type="Label" parent="VBoxContainer" unique_id=2093024914]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "friccion del carro"
+text = "Fricción del carro = c"
 
 [node name="friccioncarro" type="SpinBox" parent="VBoxContainer" unique_id=1201577456]
 layout_mode = 2
@@ -65,7 +65,7 @@ step = 0.01
 [node name="Label6" type="Label" parent="VBoxContainer" unique_id=944710701]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "pvote"
+text = "Fricción del pivote = b"
 
 [node name="pivote" type="SpinBox" parent="VBoxContainer" unique_id=659652023]
 layout_mode = 2
@@ -74,7 +74,7 @@ step = 0.001
 [node name="Label7" type="Label" parent="VBoxContainer" unique_id=232831458]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "fuerza de entrada maxima"
+text = "Fuerza máxima de entrada = u_max"
 
 [node name="imputmaxforce" type="SpinBox" parent="VBoxContainer" unique_id=1766578177]
 layout_mode = 2
@@ -82,7 +82,7 @@ layout_mode = 2
 [node name="Label8" type="Label" parent="VBoxContainer" unique_id=94865372]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "Kx"
+text = "Ganancia de la posición x = K1"
 
 [node name="kx" type="SpinBox" parent="VBoxContainer" unique_id=512277001]
 layout_mode = 2
@@ -91,7 +91,7 @@ step = 0.001
 [node name="Label9" type="Label" parent="VBoxContainer" unique_id=1830795192]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "K del angulo"
+text = "Ganancia del ángulo θ = K2"
 
 [node name="kteta" type="SpinBox" parent="VBoxContainer" unique_id=2013686670]
 layout_mode = 2
@@ -100,7 +100,7 @@ step = 0.001
 [node name="Label10" type="Label" parent="VBoxContainer" unique_id=178033850]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "K de x'"
+text = "Ganancia de la velocidad x' = K3"
 
 [node name="kdx" type="SpinBox" parent="VBoxContainer" unique_id=1515836024]
 layout_mode = 2
@@ -109,7 +109,7 @@ step = 0.001
 [node name="Label11" type="Label" parent="VBoxContainer" unique_id=893265783]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
-text = "K del angulo"
+text = "Ganancia de la velocidad angular θ' = K4"
 
 [node name="kdteta" type="SpinBox" parent="VBoxContainer" unique_id=1199884316]
 layout_mode = 2
@@ -117,25 +117,25 @@ step = 0.001
 
 [node name="Button" type="Button" parent="." unique_id=514097533]
 layout_mode = 0
-offset_left = 228.0
+offset_left = 268.0
 offset_top = 580.0
-offset_right = 348.0
+offset_right = 388.0
 offset_bottom = 611.0
 text = "Guardar datos"
 
 [node name="Button2" type="Button" parent="." unique_id=2025592600]
 layout_mode = 0
-offset_left = 375.0
+offset_left = 415.0
 offset_top = 580.0
-offset_right = 417.0
+offset_right = 457.0
 offset_bottom = 611.0
 text = "Volver al inicio"
 
 [node name="Label" type="Label" parent="." unique_id=1899669439]
 layout_mode = 0
-offset_left = 228.0
+offset_left = 268.0
 offset_top = 527.0
-offset_right = 496.0
+offset_right = 536.0
 offset_bottom = 556.0
 text = "Datos guardados correctamente"
 
@@ -144,11 +144,11 @@ one_shot = true
 
 [node name="Label2" type="Label" parent="." unique_id=1918555978]
 layout_mode = 0
-offset_left = 208.0
+offset_left = 248.0
 offset_top = 419.0
-offset_right = 607.0
+offset_right = 600.0
 offset_bottom = 442.0
-text = "<--- Buscar las ganancias usando Sedumi en matlab "
+text = "<--- Calcular K con SeDuMi (MATLAB)"
 
 [node name="ModeloLineal" type="VBoxContainer" parent="." unique_id=1428570331]
 layout_mode = 0

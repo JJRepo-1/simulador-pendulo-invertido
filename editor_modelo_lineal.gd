@@ -4,9 +4,10 @@ extends VBoxContainer
 # ============================================================
 # EDITOR DE LOS MODELOS (pantalla de Configuracion)
 # ============================================================
-# Pestana 1 - Modelo no lineal: el estudiante escribe x'' y theta'' como
-#   formulas del estado. La simulacion usa exactamente esas ecuaciones.
-#   Se comparan contra el modelo de referencia (modelo_pendulo.gd).
+# Pestana 1 - Modelo no lineal: el estudiante escribe las dos ecuaciones
+#   de movimiento (dinamica del carro y del pendulo) con '='. La simulacion
+#   despeja x'' y θ'' de esas ecuaciones. Se comparan contra el modelo de
+#   referencia ideal y con friccion (modelo_pendulo.gd).
 #
 # Pestana 2 - Modelo lineal: A y B como formulas de los parametros.
 #   Cada celda se compara contra la linealizacion numerica (jacobiano)
@@ -25,17 +26,6 @@ const NOMBRES_FILA: Array[String] = ["x'", "θ'", "x''", "θ''"]
 
 const FUENTE: int = 12
 
-# Estados de prueba [x, theta, dx, dtheta, u] para comparar el modelo
-# no lineal del estudiante contra el de referencia (lejos del equilibrio).
-const PUNTOS_PRUEBA: Array = [
-	[0.0, 0.0, 0.0, 0.0, 0.0],
-	[0.1, 0.3, 0.5, -1.0, 5.0],
-	[-0.4, -1.2, -0.3, 2.0, -20.0],
-	[0.0, 2.5, 1.0, 0.5, 0.0],
-	[0.7, 3.0, -2.0, -3.0, 50.0],
-	[0.0, -0.05, 0.2, 0.1, 1.0],
-]
-
 var _parametros: Dictionary = {}
 var _jacobiano: Dictionary = {}
 var _origen_jacobiano: String = ""   # "usuario" o "referencia"
@@ -47,10 +37,10 @@ var _celdas: Array[LineEdit] = []   # 0..15 = A por filas, 16..19 = B
 var _celda_activa: int = -1
 
 # Pestana no lineal
-var _txt_nl_aux: TextEdit
-var _txt_ddx: LineEdit
-var _txt_ddth: LineEdit
+var _txt_carro: LineEdit
+var _txt_pendulo: LineEdit
 var _lbl_errores_nl: Label
+var _lbl_masas: Label
 var _lbl_resumen_nl: Label
 
 # Pestana lineal
@@ -78,10 +68,9 @@ func cargar(aux: String, formulas_A: PackedStringArray, formulas_B: PackedString
 	_reevaluar()
 
 
-func cargar_no_lineal(aux_nl: String, ddx: String, ddth: String) -> void:
-	_txt_nl_aux.text = aux_nl
-	_txt_ddx.text = ddx
-	_txt_ddth.text = ddth
+func cargar_no_lineal(ecuacion_carro: String, ecuacion_pendulo: String) -> void:
+	_txt_carro.text = ecuacion_carro
+	_txt_pendulo.text = ecuacion_pendulo
 	_reevaluar()
 
 
@@ -109,16 +98,12 @@ func obtener_B() -> PackedStringArray:
 	return B
 
 
-func obtener_nl_aux() -> String:
-	return _txt_nl_aux.text
+func obtener_ecuacion_carro() -> String:
+	return _txt_carro.text.strip_edges()
 
 
-func obtener_ddx() -> String:
-	return _txt_ddx.text.strip_edges()
-
-
-func obtener_ddth() -> String:
-	return _txt_ddth.text.strip_edges()
+func obtener_ecuacion_pendulo() -> String:
+	return _txt_pendulo.text.strip_edges()
 
 
 func tiene_errores() -> bool:
@@ -160,32 +145,32 @@ func _crear_tab(tabs: TabContainer) -> VBoxContainer:
 
 
 func _construir_tab_no_lineal(caja: VBoxContainer) -> void:
-	caja.add_child(_etiqueta("Modelo no lineal:  x'' = f(...),   θ'' = g(...)", 16))
+	caja.add_child(_etiqueta("Modelo no lineal: ecuaciones de movimiento", 16))
 
 	var ayuda := _etiqueta(
-		"Estado: x, theta, dx, dtheta.  Entrada: u (fuerza).  Parámetros: M, m, l, J, g, c, b "
-		+ "y las auxiliares constantes de la pestaña 2.  θ'' puede usar ddx.  "
-		+ "Esta es la planta que se simula con el controlador.", 11)
+		"Escribe cada ecuación con '='. Estado: x, θ (o theta), velocidades x', θ', "
+		+ "aceleraciones x'', θ''. Entrada: u (fuerza). Parámetros: M, m, l, J, g, "
+		+ "c (fricción del carro), b (fricción del pivote). Funciones: sen, cos, tan, sqrt... "
+		+ "(senθ y cosθ se pueden escribir sin paréntesis). θ = 0 es el péndulo hacia arriba. "
+		+ "Para incluir fricción suma  + c*x'  en la del carro y  + b*θ'  en la del péndulo.", 11)
 	ayuda.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ayuda.modulate = Color(1, 1, 1, 0.75)
 	caja.add_child(ayuda)
 
-	caja.add_child(_etiqueta("Variables auxiliares (pueden depender del estado, una por línea):", FUENTE))
-
-	_txt_nl_aux = TextEdit.new()
-	_txt_nl_aux.custom_minimum_size = Vector2(0, 110)
-	_txt_nl_aux.add_theme_font_size_override("font_size", FUENTE)
-	_txt_nl_aux.placeholder_text = "D = (M + m)*(J + m*l^2) - (m*l*cos(theta))^2"
-	_txt_nl_aux.text_changed.connect(_reevaluar)
-	caja.add_child(_txt_nl_aux)
-
-	_txt_ddx = _fila_ecuacion(caja, "x''  =")
-	_txt_ddth = _fila_ecuacion(caja, "θ''  =")
+	caja.add_child(_etiqueta("1. Dinámica del carro", 13))
+	_txt_carro = _fila_ecuacion(caja, FormulasLineales.EJEMPLO_CARRO)
+	caja.add_child(_etiqueta("2. Dinámica del péndulo", 13))
+	_txt_pendulo = _fila_ecuacion(caja, FormulasLineales.EJEMPLO_PENDULO)
 
 	_lbl_errores_nl = _etiqueta("", 11)
 	_lbl_errores_nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_lbl_errores_nl.add_theme_color_override("font_color", COLOR_ERROR)
 	caja.add_child(_lbl_errores_nl)
+
+	_lbl_masas = _etiqueta("", 11)
+	_lbl_masas.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lbl_masas.modulate = Color(1, 1, 1, 0.8)
+	caja.add_child(_lbl_masas)
 
 	_lbl_resumen_nl = _etiqueta("", 13)
 	_lbl_resumen_nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -195,30 +180,48 @@ func _construir_tab_no_lineal(caja: VBoxContainer) -> void:
 	botones.add_theme_constant_override("separation", 8)
 	caja.add_child(botones)
 
-	var btn_ref := Button.new()
-	btn_ref.text = "Cargar modelo de referencia"
-	btn_ref.pressed.connect(func() -> void:
-		cargar_no_lineal(FormulasLineales.EJEMPLO_NL_AUX,
-			FormulasLineales.EJEMPLO_DDX, FormulasLineales.EJEMPLO_DDTH))
-	botones.add_child(btn_ref)
+	var btn_ideal := Button.new()
+	btn_ideal.text = "Cargar sistema ideal"
+	btn_ideal.pressed.connect(func() -> void:
+		cargar_no_lineal(FormulasLineales.EJEMPLO_CARRO, FormulasLineales.EJEMPLO_PENDULO))
+	botones.add_child(btn_ideal)
+
+	var btn_friccion := Button.new()
+	btn_friccion.text = "Cargar con fricción"
+	btn_friccion.pressed.connect(func() -> void:
+		cargar_no_lineal(FormulasLineales.EJEMPLO_CARRO_FRICCION,
+			FormulasLineales.EJEMPLO_PENDULO_FRICCION))
+	botones.add_child(btn_friccion)
 
 	var btn_limpiar := Button.new()
 	btn_limpiar.text = "Limpiar ecuaciones"
-	btn_limpiar.pressed.connect(func() -> void: cargar_no_lineal("", "", ""))
+	btn_limpiar.pressed.connect(func() -> void: cargar_no_lineal("", ""))
 	botones.add_child(btn_limpiar)
 
 
-func _fila_ecuacion(caja: VBoxContainer, titulo: String) -> LineEdit:
+# Fila con el campo de la ecuacion y botones para insertar simbolos
+# que no estan en el teclado.
+func _fila_ecuacion(caja: VBoxContainer, ejemplo: String) -> LineEdit:
 	var fila := HBoxContainer.new()
+	fila.add_theme_constant_override("separation", 4)
 	caja.add_child(fila)
-	var e := _etiqueta(titulo, 14)
-	e.custom_minimum_size = Vector2(56, 0)
-	fila.add_child(e)
 	var campo := LineEdit.new()
 	campo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	campo.add_theme_font_size_override("font_size", FUENTE)
+	campo.add_theme_font_size_override("font_size", 14)
+	campo.placeholder_text = ejemplo
 	campo.text_changed.connect(func(_t: String) -> void: _reevaluar())
 	fila.add_child(campo)
+	for simbolo: String in ["θ", "θ'", "θ''"]:
+		var btn := Button.new()
+		btn.text = simbolo
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.tooltip_text = "Insertar " + simbolo
+		btn.add_theme_font_size_override("font_size", FUENTE)
+		btn.pressed.connect(func() -> void:
+			campo.insert_text_at_caret(simbolo)
+			campo.grab_focus()
+			_reevaluar())
+		fila.add_child(btn)
 	return campo
 
 
@@ -340,24 +343,26 @@ func _reevaluar() -> void:
 # Construye el modelo no lineal del estudiante, lo compara con el de
 # referencia y fija la linealizacion contra la que se revisan A y B.
 func _reevaluar_no_lineal() -> void:
-	_resultado_nl = ModeloFormulas.construir(
-		_parametros, _txt_aux.text, _txt_nl_aux.text, _txt_ddx.text, _txt_ddth.text)
+	_resultado_nl = ModeloFormulas.construir(_parametros, _txt_carro.text, _txt_pendulo.text)
 
-	var errores := PackedStringArray(_resultado_nl.errores_aux)
-	if _resultado_nl.error_ddx != "":
-		errores.append("x'': " + _resultado_nl.error_ddx)
-	if _resultado_nl.error_ddth != "":
-		errores.append("θ'': " + _resultado_nl.error_ddth)
+	var errores := PackedStringArray()
+	if _resultado_nl.error_carro != "":
+		errores.append("Carro: " + _resultado_nl.error_carro)
+	if _resultado_nl.error_pendulo != "":
+		errores.append("Péndulo: " + _resultado_nl.error_pendulo)
+	if _resultado_nl.error_sistema != "":
+		errores.append(_resultado_nl.error_sistema)
 	_lbl_errores_nl.text = "\n".join(errores)
 	_lbl_errores_nl.visible = not errores.is_empty()
 
-	_txt_ddx.add_theme_color_override("font_color",
-		COLOR_ERROR if _resultado_nl.error_ddx != "" else COLOR_TEXTO)
-	_txt_ddth.add_theme_color_override("font_color",
-		COLOR_ERROR if _resultado_nl.error_ddth != "" else COLOR_TEXTO)
+	_txt_carro.add_theme_color_override("font_color",
+		COLOR_ERROR if _resultado_nl.error_carro != "" else COLOR_TEXTO)
+	_txt_pendulo.add_theme_color_override("font_color",
+		COLOR_ERROR if _resultado_nl.error_pendulo != "" else COLOR_TEXTO)
 
 	_jacobiano = {}
 	_origen_jacobiano = ""
+	_lbl_masas.text = ""
 
 	if _error_parametros != "":
 		_resumen_nl("Parámetros inválidos: " + _error_parametros, COLOR_ERROR)
@@ -383,31 +388,61 @@ func _reevaluar_no_lineal() -> void:
 	_jacobiano = jac_usuario
 	_origen_jacobiano = "usuario"
 
-	# Comparacion contra el modelo de referencia en varios estados
+	# Matriz de masas que se desprende de las ecuaciones, en el equilibrio
+	var co: Dictionary = usuario.coeficientes(0.0, 0.0, 0.0, 0.0, 0.0)
+	_lbl_masas.text = ("Matriz de masas en θ = 0:  [ %s   %s ;  %s   %s ]     determinante = %s"
+		% [_num(co.a11), _num(co.a12), _num(co.a21), _num(co.a22), _num(co.det)])
+
+	# Comparacion contra el modelo de referencia: ideal (c = b = 0) y con friccion
+	var p_ideal: Dictionary = _parametros.duplicate()
+	p_ideal.c = 0.0
+	p_ideal.b = 0.0
+	var dif_ideal: Dictionary = _diferencia(usuario, PenduloModelo.desde_parametros(p_ideal))
+	if usuario.error_ejecucion != "":
+		_resumen_nl("Tus ecuaciones fallan lejos del equilibrio: " + usuario.error_ejecucion, COLOR_ERROR)
+		return
+	var dif_friccion: Dictionary = _diferencia(usuario, referencia)
+	var hay_friccion: bool = referencia.c > 0.0 or referencia.b > 0.0
+
+	if dif_ideal.max < 1e-6:
+		var nota: String = ""
+		if hay_friccion:
+			nota = " Los coeficientes c y b de la izquierda no se usan porque las ecuaciones no los incluyen."
+		_resumen_nl("Correcto: tus ecuaciones son las del sistema ideal (sin fricción). "
+			+ "La simulación usará tus ecuaciones." + nota, COLOR_OK)
+	elif hay_friccion and dif_friccion.max < 1e-6:
+		_resumen_nl("Correcto: tus ecuaciones son las del sistema con fricción viscosa "
+			+ "(c = %s, b = %s). La simulación usará tus ecuaciones." % [
+				_num(referencia.c), _num(referencia.b)], COLOR_OK)
+	else:
+		var peor: Array = dif_ideal.punto
+		_resumen_nl("Tus ecuaciones se pueden simular, pero difieren del modelo de referencia "
+			+ "(p. ej. en θ = %.0f°, x' = %.1f, θ' = %.1f, u = %.0f). La simulación usará TUS ecuaciones; "
+			% [rad_to_deg(peor[1]), peor[2], peor[3], peor[4]]
+			+ "A y B se comparan contra su linealización.", COLOR_DIFERENTE)
+
+
+# Maxima diferencia relativa de las aceleraciones en los estados de prueba.
+# Devuelve {"max": float, "punto": Array}.
+func _diferencia(usuario: ModeloFormulas, referencia: PenduloModelo) -> Dictionary:
 	var max_dif: float = 0.0
-	var peor: Array = []
-	for punto: Array in PUNTOS_PRUEBA:
+	var peor: Array = ModeloFormulas.PUNTOS_PRUEBA[0]
+	for punto: Array in ModeloFormulas.PUNTOS_PRUEBA:
 		var a_u: PackedFloat64Array = usuario.aceleraciones_estado(
 			punto[0], punto[1], punto[2], punto[3], punto[4])
 		var a_r: PackedFloat64Array = referencia.aceleraciones(punto[1], punto[2], punto[3], punto[4])
 		if usuario.error_ejecucion != "":
-			_resumen_nl("Tus ecuaciones fallan en θ = %.1f°: %s" % [
-				rad_to_deg(punto[1]), usuario.error_ejecucion], COLOR_ERROR)
-			return
+			return {"max": INF, "punto": punto}
 		for k in range(2):
 			var dif: float = absf(a_u[k] - a_r[k]) / (1.0 + absf(a_r[k]))
 			if dif > max_dif:
 				max_dif = dif
 				peor = punto
+	return {"max": max_dif, "punto": peor}
 
-	if max_dif < 1e-6:
-		_resumen_nl("Correcto: tus ecuaciones coinciden con el modelo de referencia. "
-			+ "La simulación usará tus ecuaciones.", COLOR_OK)
-	else:
-		_resumen_nl("Tus ecuaciones se pueden simular, pero difieren del modelo de referencia "
-			+ "(p. ej. en θ = %.0f°, x' = %.1f, θ' = %.1f, u = %.0f). La simulación usará TUS ecuaciones; "
-			% [rad_to_deg(peor[1]), peor[2], peor[3], peor[4]]
-			+ "A y B se comparan contra su linealización.", COLOR_DIFERENTE)
+
+func _num(v: float) -> String:
+	return String.num(v, 4)
 
 
 func _resumen_nl(texto: String, color: Color) -> void:

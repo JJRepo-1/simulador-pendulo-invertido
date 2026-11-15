@@ -45,16 +45,6 @@ layout_mode = 2
 [node name="Simular" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=2038818233]
 layout_mode = 2
 
-[node name="Label3" type="Label" parent="CanvasLayer/VBoxContainer" unique_id=659714518]
-layout_mode = 2
-text = "Seguimiento de trayectoria"
-
-[node name="SpinBox2" type="SpinBox" parent="CanvasLayer/VBoxContainer" unique_id=1996614983]
-layout_mode = 2
-
-[node name="Button" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=1569955678]
-layout_mode = 2
-
 [node name="plots" type="VBoxContainer" parent="CanvasLayer" unique_id=1188072227]
 offset_left = 30.0
 offset_top = 172.0
@@ -81,5 +71,3 @@ script = ExtResource("5_qs2cl")
 custom_minimum_size = Vector2(200, 100)
 layout_mode = 2
 script = ExtResource("5_qs2cl")
-
-[connection signal="pressed" from="CanvasLayer/VBoxContainer/Button" to="." method="_on_button_pressed"]

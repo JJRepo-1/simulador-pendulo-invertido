@@ -49,7 +49,9 @@ func _ready() -> void:
 	planta_es_usuario = r.ok
 	planta = r.modelo if r.ok else modelo
 	if not r.ok:
-		push_warning("Ecuaciones no lineales del usuario con errores; se usa el modelo de referencia.")
+		var motivo: String = "; ".join(PackedStringArray(
+			[r.error_carro, r.error_pendulo, r.error_sistema].filter(func(e: String) -> bool: return e != "")))
+		push_warning("Ecuaciones de movimiento con errores (%s); se usa el modelo de referencia." % motivo)
 
 	var error_modelo: String = modelo.validar()
 	if error_modelo != "":
