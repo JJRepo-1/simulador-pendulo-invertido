@@ -1,0 +1,27 @@
+[gd_scene format=3 uid="uid://cgrjih0eswi7r"]
+
+[ext_resource type="Script" uid="uid://dbgc57gvlme2x" path="res://pruebas.gd" id="1_gb80x"]
+
+[node name="Pruebas" type="Node2D" unique_id=1960817735]
+script = ExtResource("1_gb80x")
+
+[node name="Button" type="Button" parent="." unique_id=1983198433]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 276.0
+offset_top = 114.0
+offset_right = 318.0
+offset_bottom = 145.0
+grow_horizontal = 0
+grow_vertical = 0
+text = "Salir"
+
+[node name="Marker2D" type="Marker2D" parent="." unique_id=145891396]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1875021876]
+position = Vector2(3, 1)
+
+[connection signal="pressed" from="Button" to="." method="_on_button_pressed"]

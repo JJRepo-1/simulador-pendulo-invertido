@@ -1,0 +1,85 @@
+[gd_scene format=3 uid="uid://deec4pc203qpg"]
+
+[ext_resource type="Script" uid="uid://cmfa4mrjvt0ww" path="res://pendulo_2.gd" id="1_3m1q4"]
+[ext_resource type="Texture2D" uid="uid://6lacoe7hrbwi" path="res://icon.svg" id="2_0nebc"]
+[ext_resource type="Texture2D" uid="uid://cwscrl018k1nr" path="res://Sprite-0001.png" id="2_tt8m7"]
+[ext_resource type="Texture2D" uid="uid://uw7hsui0fbtl" path="res://Sprite-0002.png" id="3_qs2cl"]
+[ext_resource type="Script" uid="uid://d0y8odj8vbm4g" path="res://graficas.gd" id="5_qs2cl"]
+
+[node name="Pendulo" type="Node2D" unique_id=1774870140]
+script = ExtResource("1_3m1q4")
+
+[node name="Carrito" type="Sprite2D" parent="." unique_id=586777584]
+texture = ExtResource("2_tt8m7")
+
+[node name="Eslabon" type="Sprite2D" parent="." unique_id=1054215964]
+texture = ExtResource("3_qs2cl")
+
+[node name="masa" type="Sprite2D" parent="." unique_id=450682634]
+visible = false
+texture = ExtResource("2_0nebc")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1427243448]
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer" unique_id=955582004]
+offset_left = 29.0
+offset_top = 19.0
+offset_right = 116.0
+offset_bottom = 62.0
+scale = Vector2(0.5, 0.5)
+
+[node name="Label2" type="Label" parent="CanvasLayer/VBoxContainer" unique_id=1918382729]
+layout_mode = 2
+text = "Posicion inicial"
+
+[node name="SpinBox" type="SpinBox" parent="CanvasLayer/VBoxContainer" unique_id=233933019]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="CanvasLayer/VBoxContainer" unique_id=1102115929]
+layout_mode = 2
+text = "Angulo inicial"
+
+[node name="angle" type="SpinBox" parent="CanvasLayer/VBoxContainer" unique_id=889034341]
+layout_mode = 2
+
+[node name="Simular" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=2038818233]
+layout_mode = 2
+
+[node name="Label3" type="Label" parent="CanvasLayer/VBoxContainer" unique_id=659714518]
+layout_mode = 2
+text = "Seguimiento de trayectoria"
+
+[node name="SpinBox2" type="SpinBox" parent="CanvasLayer/VBoxContainer" unique_id=1996614983]
+layout_mode = 2
+
+[node name="Button" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=1569955678]
+layout_mode = 2
+
+[node name="plots" type="VBoxContainer" parent="CanvasLayer" unique_id=1188072227]
+offset_left = 30.0
+offset_top = 172.0
+offset_right = 230.0
+offset_bottom = 584.0
+scale = Vector2(0.5, 0.5)
+
+[node name="Control" type="Control" parent="CanvasLayer/plots" unique_id=2027102479]
+custom_minimum_size = Vector2(200, 100)
+layout_mode = 2
+script = ExtResource("5_qs2cl")
+
+[node name="Control3" type="Control" parent="CanvasLayer/plots" unique_id=644925856]
+custom_minimum_size = Vector2(200, 100)
+layout_mode = 2
+script = ExtResource("5_qs2cl")
+
+[node name="Control4" type="Control" parent="CanvasLayer/plots" unique_id=671990867]
+custom_minimum_size = Vector2(200, 100)
+layout_mode = 2
+script = ExtResource("5_qs2cl")
+
+[node name="Control2" type="Control" parent="CanvasLayer/plots" unique_id=1965907065]
+custom_minimum_size = Vector2(200, 100)
+layout_mode = 2
+script = ExtResource("5_qs2cl")
+
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/Button" to="." method="_on_button_pressed"]
