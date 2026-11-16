@@ -33,6 +33,17 @@ var lineal_A: PackedStringArray = PackedStringArray(FormulasLineales.EJEMPLO_A)
 var lineal_B: PackedStringArray = PackedStringArray(FormulasLineales.EJEMPLO_B)
 
 
+# --- Seguimiento de trayectoria con accion integral (pendulo3) ---
+# Sistema aumentado Xa = [x, θ, x', θ', z], z' = r - x (formulas de Aa 5x5 y Ba 5x1,
+# con las auxiliares de lineal_aux).
+var aumentado_A: PackedStringArray = PackedStringArray(FormulasLineales.EJEMPLO_AUM_A)
+var aumentado_B: PackedStringArray = PackedStringArray(FormulasLineales.EJEMPLO_AUM_B)
+
+# Ka = [K, -ki], calculada en MATLAB con la LMI de orden 5 (alpha = 1, beta = 10).
+# Ley de control: u = -Ka * [x, θ, x', θ', z]
+var Ka: PackedFloat64Array = PackedFloat64Array([-85.5197, -277.5251, -60.9428, -85.1777, 52.7022])
+
+
 var PenduloSeleccion: int  = 0
 
 
@@ -68,6 +79,8 @@ func _set_escena(seleccion: int) -> void:
 			PenduloSeleccion = 0
 		1:
 			PenduloSeleccion = 1
+		2:
+			PenduloSeleccion = 2
 		_:
 			return
 	

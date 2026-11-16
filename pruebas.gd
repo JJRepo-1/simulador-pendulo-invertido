@@ -2,6 +2,7 @@ extends Node2D
 
 var penduloSuelto : PackedScene = load("res://pendulo.tscn")
 var penduloLineal : PackedScene = load("res://pendulo2.tscn")
+var penduloSeguimiento : PackedScene = load("res://pendulo3.tscn")
 
 @onready var macador: Marker2D = $Marker2D
 
@@ -14,6 +15,8 @@ func _ready() -> void:
 			pendulo = penduloSuelto
 		1:
 			pendulo = penduloLineal
+		2:
+			pendulo = penduloSeguimiento
 	
 	if pendulo != null:
 		var nuevaInstancia = pendulo.instantiate()

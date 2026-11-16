@@ -59,6 +59,8 @@ func _ready() -> void:
 	# 3. Editor del modelo lineal: se evalua con los parametros de esta pantalla
 	editor_lineal.cargar(Globals.lineal_aux, Globals.lineal_A, Globals.lineal_B)
 	editor_lineal.cargar_no_lineal(Globals.no_lineal_carro, Globals.no_lineal_pendulo)
+	editor_lineal.aumentado.cargar(Globals.aumentado_A, Globals.aumentado_B)
+	editor_lineal.aumentado.cargar_ganancias(Globals.Ka)
 	editor_lineal.actualizar_parametros(_parametros_actuales())
 	for box: SpinBox in [input_cart_mass, input_bob_mass, input_arm_length,
 			input_inertia, input_cart_friction, input_pivot_damping]:
@@ -109,12 +111,17 @@ func _on_button_pressed() -> void:
 	Globals.lineal_B = editor_lineal.obtener_B()
 	Globals.no_lineal_carro = editor_lineal.obtener_ecuacion_carro()
 	Globals.no_lineal_pendulo = editor_lineal.obtener_ecuacion_pendulo()
+	Globals.aumentado_A = editor_lineal.aumentado.obtener_A()
+	Globals.aumentado_B = editor_lineal.aumentado.obtener_B()
+	Globals.Ka = editor_lineal.aumentado.obtener_ganancias()
 
 	var avisos: Array[String] = []
 	if editor_lineal.tiene_errores_no_lineal():
 		avisos.append("ecuaciones no lineales con errores (se usará el modelo de referencia)")
 	if editor_lineal.tiene_errores():
 		avisos.append("A/B con errores (no habrá comparación lineal)")
+	if editor_lineal.aumentado.tiene_errores():
+		avisos.append("Aa/Ba con errores (no habrá comparación lineal en el seguimiento)")
 	if avisos.is_empty():
 		notificar.text = "Datos guardados correctamente"
 	else:

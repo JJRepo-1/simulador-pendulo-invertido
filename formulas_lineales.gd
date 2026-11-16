@@ -73,6 +73,33 @@ const EJEMPLO_B: Array[String] = [
 	"-(m*l)/Delta",
 ]
 
+# --- Sistema aumentado con accion integral (codigo_seguimiento.m) ---
+# Xa = [x, θ, x', θ', z],  z' = r - x
+# Aa = [A, 0; -C, 0],  Ba = [B; 0],  Br = [0; 0; 0; 0; 1],  C = [1 0 0 0]
+const EJEMPLO_AUM_A: Array[String] = [
+	"0", "0", "1", "0", "0",
+	"0", "0", "0", "1", "0",
+	"0", "-(m^2*g*l^2)/Delta", "0", "0", "0",
+	"0", "(M + m)*m*g*l/Delta", "0", "0", "0",
+	"-1", "0", "0", "0", "0",
+]
+
+const EJEMPLO_AUM_A_FRICCION: Array[String] = [
+	"0", "0", "1", "0", "0",
+	"0", "0", "0", "1", "0",
+	"0", "-(m^2*g*l^2)/Delta", "-(J + m*l^2)*c/Delta", "m*l*b/Delta", "0",
+	"0", "(M + m)*m*g*l/Delta", "m*l*c/Delta", "-(M + m)*b/Delta", "0",
+	"-1", "0", "0", "0", "0",
+]
+
+const EJEMPLO_AUM_B: Array[String] = [
+	"0",
+	"0",
+	"(J + m*l^2)/Delta",
+	"-(m*l)/Delta",
+	"0",
+]
+
 # Codigos de operacion del programa compilado
 enum Op { NUM, VAR, ADD, SUB, MUL, DIV, POW, NEG, FUNC }
 
@@ -293,29 +320,30 @@ static func variables_parametros(p: Dictionary) -> Dictionary:
 	return base
 
 
-# Evalua A (16 formulas por filas) y B (4 formulas) con los parametros p.
+# Evalua A (n*n formulas por filas) y B (n formulas) con los parametros p.
+# n = 4 para el modelo lineal, n = 5 para el sistema aumentado.
 # Devuelve {"ok", "A", "B", "errores_A", "errores_B", "errores_aux"}.
 static func evaluar_modelo(aux: String, formulas_A: PackedStringArray,
-		formulas_B: PackedStringArray, p: Dictionary) -> Dictionary:
+		formulas_B: PackedStringArray, p: Dictionary, n: int = 4) -> Dictionary:
 	var r_aux: Dictionary = evaluar_auxiliares(aux, variables_parametros(p))
 	var variables: Dictionary = r_aux.variables
 
 	var A := PackedFloat64Array()
-	A.resize(16)
+	A.resize(n * n)
 	var errores_A := PackedStringArray()
-	errores_A.resize(16)
+	errores_A.resize(n * n)
 	var B := PackedFloat64Array()
-	B.resize(4)
+	B.resize(n)
 	var errores_B := PackedStringArray()
-	errores_B.resize(4)
+	errores_B.resize(n)
 
 	var ok: bool = r_aux.ok
-	for k in range(16):
+	for k in range(n * n):
 		var r: Dictionary = evaluar(formulas_A[k] if k < formulas_A.size() else "", variables, "lineal")
 		A[k] = r.valor
 		errores_A[k] = r.error
 		ok = ok and r.ok
-	for k in range(4):
+	for k in range(n):
 		var r: Dictionary = evaluar(formulas_B[k] if k < formulas_B.size() else "", variables, "lineal")
 		B[k] = r.valor
 		errores_B[k] = r.error

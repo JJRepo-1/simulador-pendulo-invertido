@@ -18,5 +18,9 @@ func _on_lineal_pressed() -> void:
 	Globals._set_escena(1)
 
 
+func _on_seguimiento_pressed() -> void:
+	Globals._set_escena(2)
+
+
 func _on_opciones_pressed() -> void:
 	get_tree().change_scene_to_file("res://configuracion.tscn")

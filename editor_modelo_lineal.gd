@@ -50,6 +50,9 @@ var _chk_esperados: CheckBox
 var _lbl_detalle: Label
 var _lbl_resumen: Label
 
+# Pestana 3: sistema aumentado con accion integral (pendulo3)
+var aumentado: EditorAumentado
+
 
 func _ready() -> void:
 	_construir_interfaz()
@@ -131,6 +134,12 @@ func _construir_interfaz() -> void:
 	var tab_lin := _crear_tab(tabs)
 	tabs.set_tab_title(1, "2. Modelo lineal (A, B)")
 	_construir_tab_lineal(tab_lin)
+
+	var tab_aum := _crear_tab(tabs)
+	tabs.set_tab_title(2, "3. Seguimiento (Aa, Ba, Ka)")
+	aumentado = EditorAumentado.new()
+	aumentado.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tab_aum.add_child(aumentado)
 
 
 func _crear_tab(tabs: TabContainer) -> VBoxContainer:
@@ -346,6 +355,7 @@ func _reevaluar() -> void:
 		return
 	_reevaluar_no_lineal()
 	_reevaluar_lineal()
+	aumentado.actualizar(_parametros, _txt_aux.text, _error_parametros, _jacobiano)
 
 
 # Construye el modelo no lineal del estudiante, lo compara con el de
