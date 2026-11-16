@@ -113,6 +113,13 @@ func tiene_errores() -> bool:
 	return _resultado.is_empty() or not _resultado.ok
 
 
+# A y B numericas de la pestaña 2 ({} si tienen errores), para el calculo de K.
+func matrices_lineales() -> Dictionary:
+	if tiene_errores():
+		return {}
+	return {"A": _resultado.A, "B": _resultado.B}
+
+
 func tiene_errores_no_lineal() -> bool:
 	return _resultado_nl.is_empty() or not _resultado_nl.ok
 

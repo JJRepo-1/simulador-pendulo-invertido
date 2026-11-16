@@ -15,6 +15,10 @@ extends Control
 @onready var notificar: Label = $Label
 @onready var timerrr: Timer = $Timer
 @onready var editor_lineal: EditorModeloLineal = $ModeloLineal
+@onready var btn_calcular_k: Button = $CalcularK
+
+# Calculo de K / Ka con MATLAB en modo batch (YALMIP + SeDuMi)
+var calculo_matlab: CalculoMatlab
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -65,6 +69,49 @@ func _ready() -> void:
 	for box: SpinBox in [input_cart_mass, input_bob_mass, input_arm_length,
 			input_inertia, input_cart_friction, input_pivot_damping]:
 		box.value_changed.connect(_on_parametro_cambiado)
+
+	# 4. Botones para calcular las ganancias con MATLAB
+	calculo_matlab = CalculoMatlab.new()
+	add_child(calculo_matlab)
+	calculo_matlab.terminado.connect(_on_ganancias_calculadas)
+	btn_calcular_k.tooltip_text = "Resuelve el LMI de codigo4.m con la A y B de la pestaña 2"
+	btn_calcular_k.pressed.connect(_on_calcular_k_pressed)
+	editor_lineal.aumentado.calcular_con_matlab.connect(_on_calcular_ka_pressed)
+
+
+# K del pendulo con control (regulacion): LMI de orden 4, alpha = 2, beta = 10.
+func _on_calcular_k_pressed() -> void:
+	var mat: Dictionary = editor_lineal.matrices_lineales()
+	if mat.is_empty():
+		_notificar("Corrige A y B (pestaña 2) antes de calcular K.")
+		return
+	calculo_matlab.solicitar("regulador", mat.A, mat.B, 4, 2.0, 10.0)
+
+
+# Ka del seguimiento de trayectoria: LMI de orden 5, alpha = 1, beta = 10.
+func _on_calcular_ka_pressed() -> void:
+	var mat: Dictionary = editor_lineal.aumentado.matrices()
+	if mat.is_empty():
+		_notificar("Corrige Aa y Ba (pestaña 3) antes de calcular Ka.")
+		return
+	calculo_matlab.solicitar("seguimiento", mat.A, mat.B, 5, 1.0, 10.0)
+
+
+func _on_ganancias_calculadas(sistema: String, K: PackedFloat64Array, _polos: Array[Vector2]) -> void:
+	if sistema == "regulador":
+		input_kx.value = K[0]
+		input_ktheta.value = K[1]
+		input_kdx.value = K[2]
+		input_kdtheta.value = K[3]
+	else:
+		editor_lineal.aumentado.cargar_ganancias(K)
+	_notificar("Ganancias calculadas con MATLAB. Presiona \"Guardar datos\" para usarlas.")
+
+
+func _notificar(texto: String) -> void:
+	notificar.text = texto
+	notificar.show()
+	timerrr.start()
 
 
 func _parametros_actuales() -> Dictionary:

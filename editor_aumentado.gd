@@ -14,6 +14,9 @@ extends VBoxContainer
 # aumentado construido con la linealizacion del modelo no lineal.
 # Ademas se muestran los polos de Aa - Ba*Ka (eig(Acl) en MATLAB).
 
+# Boton "Calcular Ka con MATLAB" (lo atiende configuracion.gd)
+signal calcular_con_matlab
+
 const N: int = 5
 const NOMBRES_ESTADO: Array[String] = ["x", "θ", "x'", "θ'", "z"]
 const NOMBRES_FILA: Array[String] = ["x'", "θ'", "x''", "θ''", "z'"]
@@ -62,7 +65,7 @@ func cargar(formulas_A: PackedStringArray, formulas_B: PackedStringArray) -> voi
 
 func cargar_ganancias(Ka: PackedFloat64Array) -> void:
 	for k in range(N):
-		_spin_ka[k].set_value_no_signal(Ka[k] if k < Ka.size() else 0.0)
+		_spin_ka[k].value = Ka[k] if k < Ka.size() else 0.0
 	_reevaluar()
 
 
@@ -103,13 +106,19 @@ func obtener_B() -> PackedStringArray:
 func obtener_ganancias() -> PackedFloat64Array:
 	var Ka := PackedFloat64Array()
 	for s: SpinBox in _spin_ka:
-		s.apply()
 		Ka.append(s.value)
 	return Ka
 
 
 func tiene_errores() -> bool:
 	return _resultado.is_empty() or not _resultado.ok
+
+
+# Aa y Ba numericas ({} si tienen errores), para el calculo de Ka.
+func matrices() -> Dictionary:
+	if tiene_errores():
+		return {}
+	return {"A": _resultado.A, "B": _resultado.B}
 
 
 # ------------------------------------------------------------
@@ -169,7 +178,16 @@ func _construir() -> void:
 	add_child(_lbl_resumen)
 
 	# Ganancias Ka = [K, -ki]
-	add_child(_etiqueta("Ganancias Ka = [K1, K2, K3, K4, −ki]  (LMI de orden 5 en MATLAB):", FUENTE))
+	var fila_titulo := HBoxContainer.new()
+	add_child(fila_titulo)
+	var lbl_ka := _etiqueta("Ganancias Ka = [K1, K2, K3, K4, −ki]  (LMI de orden 5):", FUENTE)
+	lbl_ka.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fila_titulo.add_child(lbl_ka)
+	var btn_matlab := Button.new()
+	btn_matlab.text = "Calcular Ka con MATLAB"
+	btn_matlab.add_theme_font_size_override("font_size", FUENTE)
+	btn_matlab.pressed.connect(func() -> void: calcular_con_matlab.emit())
+	fila_titulo.add_child(btn_matlab)
 	var fila_ka := HBoxContainer.new()
 	fila_ka.add_theme_constant_override("separation", 6)
 	add_child(fila_ka)

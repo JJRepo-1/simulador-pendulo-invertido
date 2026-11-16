@@ -142,13 +142,13 @@ text = "Datos guardados correctamente"
 [node name="Timer" type="Timer" parent="." unique_id=1639135796]
 one_shot = true
 
-[node name="Label2" type="Label" parent="." unique_id=1918555978]
+[node name="CalcularK" type="Button" parent="." unique_id=1918555978]
 layout_mode = 0
 offset_left = 248.0
-offset_top = 419.0
-offset_right = 600.0
-offset_bottom = 442.0
-text = "<--- Calcular K con SeDuMi (MATLAB)"
+offset_top = 416.0
+offset_right = 520.0
+offset_bottom = 447.0
+text = "<--- Calcular K con MATLAB"
 
 [node name="ModeloLineal" type="VBoxContainer" parent="." unique_id=1428570331]
 layout_mode = 0

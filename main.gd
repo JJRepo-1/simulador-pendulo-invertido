@@ -4,6 +4,10 @@ extends Control
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	get_tree().root.content_scale_size = Vector2i(1280, 720)
+	# La version se toma de Proyecto > Configuracion > Application > Config > Version
+	var version: String = ProjectSettings.get_setting("application/config/version", "")
+	if version != "":
+		$Label2.text = "Hecho por Josue Jordan Ramos Sanchez v" + version
 
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.

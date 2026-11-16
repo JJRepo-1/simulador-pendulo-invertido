@@ -37,7 +37,7 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "Péndulo con control (regulación)"
 
-[node name="seguimiento" type="Button" parent="VBoxContainer"]
+[node name="seguimiento" type="Button" parent="VBoxContainer" unique_id=209284940]
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "Seguimiento de trayectoria"
@@ -56,9 +56,9 @@ offset_top = -41.0
 offset_right = 361.0
 offset_bottom = -18.0
 grow_vertical = 0
-text = "Hecho por Josue Jordan Ramos Sanchez v0.1"
+text = "Hecho por Josue Jordan Ramos Sanchez v1.0.0"
 
 [connection signal="pressed" from="VBoxContainer/Button" to="." method="_on_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/lineal" to="." method="_on_lineal_pressed"]
-[connection signal="pressed" from="VBoxContainer/opciones" to="." method="_on_opciones_pressed"]
 [connection signal="pressed" from="VBoxContainer/seguimiento" to="." method="_on_seguimiento_pressed"]
+[connection signal="pressed" from="VBoxContainer/opciones" to="." method="_on_opciones_pressed"]
