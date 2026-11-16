@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://ds6bg1sqkrqnp"]
 
 [ext_resource type="Script" uid="uid://gg8scatjuq3" path="res://main.gd" id="1_ig7tw"]
+[ext_resource type="Texture2D" uid="uid://6lacoe7hrbwi" path="res://icon.svg" id="2_0xm2m"]
 
 [node name="main" type="Control" unique_id=350380927]
 layout_mode = 3
@@ -57,6 +58,10 @@ offset_right = 361.0
 offset_bottom = -18.0
 grow_vertical = 0
 text = "Hecho por Josue Jordan Ramos Sanchez v1.0.0"
+
+[node name="Icon" type="Sprite2D" parent="." unique_id=758495198]
+position = Vector2(1059, 563)
+texture = ExtResource("2_0xm2m")
 
 [connection signal="pressed" from="VBoxContainer/Button" to="." method="_on_button_pressed"]
 [connection signal="pressed" from="VBoxContainer/lineal" to="." method="_on_lineal_pressed"]
