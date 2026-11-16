@@ -75,6 +75,11 @@ const WARNING_ANGLE_DEG: float = 30.0
 # X = [x, theta, x_dot, theta_dot], theta = 0 -> pendulo arriba
 
 var is_simulating: bool = false
+var sim_time: float = 0.0   # Tiempo de simulacion desde "Simular" [s]
+
+# Zona de pantalla del panel de graficas (coordenadas de la ventana 720x380):
+# a la derecha de los controles, para no tapar el boton Simular.
+const GRAFICAS_RECT := Rect2(148.0, 58.0, 562.0, 238.0)
 
 var cart_x: float = 0.0
 var theta: float = 0.0
@@ -105,12 +110,9 @@ var linear_max_angle_gap: float = 0.0  # max |theta_nl - theta_lin| [rad]
 @onready var input_angulo_inicial: SpinBox = $CanvasLayer/VBoxContainer/angle
 @onready var btn_simular: Button = $CanvasLayer/VBoxContainer/Simular
 
-@onready var plot_pos: RealTimePlot = $CanvasLayer/plots/Control
-@onready var plot_angle: RealTimePlot = $CanvasLayer/plots/Control3
-@onready var plot_vel: RealTimePlot = $CanvasLayer/plots/Control4
-@onready var plot_ang_vel: RealTimePlot = $CanvasLayer/plots/Control2
-
 # Creados por codigo
+var panel_graficas: PanelGraficas
+var btn_graficas: Button
 var lbl_angle_warning: Label
 var chk_linear: CheckBox
 var lbl_linear: Label
@@ -193,34 +195,28 @@ func _load_linear_model() -> void:
 		linear_status = "A/B con errores: revisa Configuración"
 
 
+# Panel desplegable con las graficas de x, θ, x', θ' (una a la vez).
+# Se abre con el boton "Gráficas" que queda debajo de "Simular".
 func _setup_plots() -> void:
-	plot_pos.title = "Posición Carro (x)"
-	plot_pos.unit = "m"
-	plot_pos.line_color = Color(0.25, 0.85, 1.0)
-	plot_pos.auto_scale = false
-	plot_pos.y_min = min_x / pixels_per_meter
-	plot_pos.y_max = max_x / pixels_per_meter
+	panel_graficas = PanelGraficas.new()
+	$CanvasLayer.add_child(panel_graficas)
+	panel_graficas.position = GRAFICAS_RECT.position
+	panel_graficas.size = GRAFICAS_RECT.size
 
-	plot_angle.title = "Ángulo Péndulo (θ)"
-	plot_angle.unit = "°"
-	plot_angle.line_color = Color(1.0, 0.75, 0.2)
-	plot_angle.auto_scale = false
-	plot_angle.y_min = -45.0
-	plot_angle.y_max = 45.0
+	# x en escala fija (toda la pista); el resto se ajusta a los datos
+	panel_graficas.fijar_rango(PanelGraficas.IDX_X, min_x / pixels_per_meter, max_x / pixels_per_meter)
+	panel_graficas.graficas[PanelGraficas.IDX_X].ref_name = "equilibrio"
 
-	plot_vel.title = "Velocidad Carro (dx)"
-	plot_vel.unit = "m/s"
-	plot_vel.line_color = Color(0.75, 0.45, 1.0)
-	plot_vel.auto_scale = false
-	plot_vel.y_min = -3.0
-	plot_vel.y_max = 3.0
+	btn_graficas = Button.new()
+	btn_graficas.text = "Mostrar gráficas"
+	btn_graficas.focus_mode = Control.FOCUS_NONE
+	btn_graficas.pressed.connect(_on_btn_graficas_pressed)
+	btn_simular.add_sibling(btn_graficas)
 
-	plot_ang_vel.title = "Vel. Angular (dθ)"
-	plot_ang_vel.unit = "°/s"
-	plot_ang_vel.line_color = Color(1.0, 0.35, 0.45)
-	plot_ang_vel.auto_scale = false
-	plot_ang_vel.y_min = -200.0
-	plot_ang_vel.y_max = 200.0
+
+func _on_btn_graficas_pressed() -> void:
+	panel_graficas.alternar()
+	btn_graficas.text = "Ocultar gráficas" if panel_graficas.visible else "Mostrar gráficas"
 
 
 func _setup_inputs() -> void:
@@ -365,10 +361,8 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 	linear_state = Vector4(cart_x, theta, 0.0, 0.0)
 	linear_max_angle_gap = 0.0
 
-	plot_pos.clear()
-	plot_angle.clear()
-	plot_vel.clear()
-	plot_ang_vel.clear()
+	sim_time = 0.0
+	panel_graficas.limpiar()
 
 	_update_angle_warning()
 	_update_linear_label()
@@ -415,20 +409,16 @@ func _physics_process(delta: float) -> void:
 	theta_velocity = state.w
 	applied_control_force = _control_force(state)
 
+	sim_time += simulation_delta
 	update_visuals()
 
+	# Equilibrio x = 0 como referencia en la grafica de posicion
 	if use_linear:
 		linear_max_angle_gap = maxf(linear_max_angle_gap, absf(theta - linear_state.y))
-		plot_pos.add_sample(cart_x, 0.0, linear_state.x)
-		plot_angle.add_sample(rad_to_deg(theta), NAN, rad_to_deg(linear_state.y))
-		plot_vel.add_sample(cart_velocity, NAN, linear_state.z)
-		plot_ang_vel.add_sample(rad_to_deg(theta_velocity), NAN, rad_to_deg(linear_state.w))
+		panel_graficas.agregar_muestra(sim_time, state, linear_state, 0.0)
 		_update_linear_label()
 	else:
-		plot_pos.add_sample(cart_x, 0.0)
-		plot_angle.add_sample(rad_to_deg(theta))
-		plot_vel.add_sample(cart_velocity)
-		plot_ang_vel.add_sample(rad_to_deg(theta_velocity))
+		panel_graficas.agregar_muestra(sim_time, state, Vector4(NAN, NAN, NAN, NAN), 0.0)
 
 
 # ============================================================

@@ -36,10 +36,17 @@ var theta: float = 0.0
 var cart_velocity: float = 0.0
 var theta_velocity: float = 0.0
 
+var sim_time: float = 0.0  # Tiempo de simulacion [s]
+
 # --- Referencias a nodos ---
 @onready var cart_sprite: Sprite2D = $Carrito
 @onready var link_sprite: Sprite2D = $Eslabon
 @onready var bob_sprite: Sprite2D = $masa
+
+# Interfaz creada por codigo (misma zona de pantalla que en pendulo_2)
+const GRAFICAS_RECT := Rect2(148.0, 58.0, 562.0, 238.0)
+var panel_graficas: PanelGraficas
+var btn_graficas: Button
 
 
 func _ready() -> void:
@@ -63,7 +70,41 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 
+	_setup_ui()
 	reset_state(initial_cart_x_px, initial_angle_deg)
+
+
+# Botones (graficas y reinicio) y panel desplegable de graficas.
+func _setup_ui() -> void:
+	var capa := CanvasLayer.new()
+	add_child(capa)
+
+	var caja := VBoxContainer.new()
+	caja.position = Vector2(29.0, 19.0)
+	caja.scale = Vector2(0.5, 0.5)
+	capa.add_child(caja)
+
+	btn_graficas = Button.new()
+	btn_graficas.text = "Mostrar gráficas"
+	btn_graficas.focus_mode = Control.FOCUS_NONE
+	btn_graficas.pressed.connect(func() -> void:
+		panel_graficas.alternar()
+		btn_graficas.text = "Ocultar gráficas" if panel_graficas.visible else "Mostrar gráficas")
+	caja.add_child(btn_graficas)
+
+	var btn_reiniciar := Button.new()
+	btn_reiniciar.text = "Reiniciar"
+	btn_reiniciar.focus_mode = Control.FOCUS_NONE
+	btn_reiniciar.pressed.connect(func() -> void:
+		reset_state(initial_cart_x_px, initial_angle_deg)
+		set_physics_process(true))
+	caja.add_child(btn_reiniciar)
+
+	panel_graficas = PanelGraficas.new()
+	capa.add_child(panel_graficas)
+	panel_graficas.position = GRAFICAS_RECT.position
+	panel_graficas.size = GRAFICAS_RECT.size
+	panel_graficas.fijar_rango(PanelGraficas.IDX_X, min_x / pixels_per_meter, max_x / pixels_per_meter)
 
 
 func reset_state(start_x_px: float, start_angle_deg: float) -> void:
@@ -71,6 +112,12 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 	cart_velocity = 0.0
 	theta = deg_to_rad(start_angle_deg)
 	theta_velocity = 0.0
+	sim_time = 0.0
+	if planta_es_usuario:
+		planta.error_ejecucion = ""
+	if panel_graficas:
+		panel_graficas.limpiar()
+		panel_graficas.agregar_muestra(sim_time, Vector4(cart_x, theta, cart_velocity, theta_velocity))
 	update_visuals()
 
 
@@ -100,8 +147,10 @@ func _physics_process(delta: float) -> void:
 	theta = state.y
 	cart_velocity = state.z
 	theta_velocity = state.w
+	sim_time += simulation_delta
 
 	update_visuals()
+	panel_graficas.agregar_muestra(sim_time, state)
 
 
 # Planta no lineal con u = 0.

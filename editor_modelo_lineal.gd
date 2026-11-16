@@ -229,7 +229,7 @@ func _construir_tab_lineal(caja: VBoxContainer) -> void:
 	caja.add_child(_etiqueta("Modelo lineal:  dX/dt = A·X + B·u,   X = [x, θ, x', θ']", 16))
 
 	var ayuda := _etiqueta(
-		"Variables: M (carro), m (péndulo), l, J, g, c (fricción carro), b (amortiguamiento pivote) "
+		"Variables: M (carro), m (péndulo), l, J, g, c (fricción del carro), b (fricción del pivote) "
 		+ "y las auxiliares que definas. Operadores + - * / ^ ( ). Funciones: sin, cos, tan, sqrt, "
 		+ "exp, log, abs, pow, min, max. Constante: pi. Celda vacía = 0.", 11)
 	ayuda.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -297,12 +297,20 @@ func _construir_tab_lineal(caja: VBoxContainer) -> void:
 	caja.add_child(botones)
 
 	var btn_ejemplo := Button.new()
-	btn_ejemplo.text = "Cargar solución de ejemplo"
+	btn_ejemplo.text = "Cargar sistema ideal"
 	btn_ejemplo.pressed.connect(func() -> void:
 		cargar(FormulasLineales.EJEMPLO_AUX,
 			PackedStringArray(FormulasLineales.EJEMPLO_A),
 			PackedStringArray(FormulasLineales.EJEMPLO_B)))
 	botones.add_child(btn_ejemplo)
+
+	var btn_friccion := Button.new()
+	btn_friccion.text = "Cargar con fricción"
+	btn_friccion.pressed.connect(func() -> void:
+		cargar(FormulasLineales.EJEMPLO_AUX,
+			PackedStringArray(FormulasLineales.EJEMPLO_A_FRICCION),
+			PackedStringArray(FormulasLineales.EJEMPLO_B)))
+	botones.add_child(btn_friccion)
 
 	var btn_limpiar := Button.new()
 	btn_limpiar.text = "Limpiar A y B"

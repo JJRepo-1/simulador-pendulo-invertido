@@ -57,6 +57,15 @@ const EJEMPLO_A: Array[String] = [
 	"0", "(M + m)*m*g*l/Delta", "0", "0",
 ]
 
+# --- Linealizacion del sistema con friccion viscosa (c en el carro, b en el pivote) ---
+# B es la misma que en el sistema ideal.
+const EJEMPLO_A_FRICCION: Array[String] = [
+	"0", "0", "1", "0",
+	"0", "0", "0", "1",
+	"0", "-(m^2*g*l^2)/Delta", "-(J + m*l^2)*c/Delta", "m*l*b/Delta",
+	"0", "(M + m)*m*g*l/Delta", "m*l*c/Delta", "-(M + m)*b/Delta",
+]
+
 const EJEMPLO_B: Array[String] = [
 	"0",
 	"0",
