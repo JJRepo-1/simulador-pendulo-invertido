@@ -18,6 +18,7 @@ var planta_es_usuario: bool = false
 @export_group("Condiciones Iniciales")
 @export var initial_cart_x_px: float = 0.0   # Posicion inicial [px]
 @export var initial_angle_deg: float = 10.0  # Angulo inicial desde la vertical superior [grados]
+@export var simulation_time_s: float = 3.0   # Tiempo de simulacion [s] (t_final en MATLAB)
 
 @export_group("Integracion Numerica")
 @export var max_integration_step: float = 1.0 / 240.0  # Paso maximo RK4 [s]
@@ -47,6 +48,8 @@ var sim_time: float = 0.0  # Tiempo de simulacion [s]
 const GRAFICAS_RECT := Rect2(148.0, 58.0, 562.0, 238.0)
 var panel_graficas: PanelGraficas
 var btn_graficas: Button
+var control_tiempo: ControlTiempo
+var simulando: bool = true
 
 
 func _ready() -> void:
@@ -84,6 +87,10 @@ func _setup_ui() -> void:
 	caja.scale = Vector2(0.5, 0.5)
 	capa.add_child(caja)
 
+	# Duracion de la simulacion; "Reiniciar" la vuelve a correr desde t = 0
+	control_tiempo = ControlTiempo.new(simulation_time_s)
+	caja.add_child(control_tiempo)
+
 	btn_graficas = Button.new()
 	btn_graficas.text = "Mostrar gráficas"
 	btn_graficas.focus_mode = Control.FOCUS_NONE
@@ -97,6 +104,7 @@ func _setup_ui() -> void:
 	btn_reiniciar.focus_mode = Control.FOCUS_NONE
 	btn_reiniciar.pressed.connect(func() -> void:
 		reset_state(initial_cart_x_px, initial_angle_deg)
+		simulando = true
 		set_physics_process(true))
 	caja.add_child(btn_reiniciar)
 
@@ -117,12 +125,18 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 		planta.error_ejecucion = ""
 	if panel_graficas:
 		panel_graficas.limpiar()
+		panel_graficas.fijar_duracion(control_tiempo.t_final())
 		panel_graficas.agregar_muestra(sim_time, Vector4(cart_x, theta, cart_velocity, theta_velocity))
+		control_tiempo.mostrar(sim_time, false)
 	update_visuals()
 
 
 func _physics_process(delta: float) -> void:
-	var simulation_delta: float = delta * simulation_speed
+	if not simulando:
+		return
+	# El ultimo paso se recorta para terminar exactamente en t_final
+	var t_final: float = control_tiempo.t_final()
+	var simulation_delta: float = minf(delta * simulation_speed, t_final - sim_time)
 	if simulation_delta <= 0.0:
 		return
 
@@ -151,6 +165,11 @@ func _physics_process(delta: float) -> void:
 
 	update_visuals()
 	panel_graficas.agregar_muestra(sim_time, state)
+
+	var terminada: bool = sim_time >= t_final - 1e-9
+	control_tiempo.mostrar(sim_time, terminada)
+	if terminada:
+		simulando = false
 
 
 # Planta no lineal con u = 0.

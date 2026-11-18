@@ -124,3 +124,10 @@ func agregar_muestra(t: float, estado: Vector4, lineal: Vector4 = Vector4(NAN, N
 func limpiar() -> void:
 	for g: RealTimePlot in graficas:
 		g.clear()
+
+
+# Eje de tiempo fijo en [0, segundos], como plot(t, ...) en MATLAB.
+func fijar_duracion(segundos: float) -> void:
+	for g: RealTimePlot in graficas:
+		g.window_seconds = maxf(segundos, 0.1)
+		g.queue_redraw()

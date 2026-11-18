@@ -7,7 +7,6 @@ extends Node2D
 # (el mismo controlador aplicado al modelo no lineal):
 #
 #   u = -K * X,   X = [x, theta, x', theta']
-#
 # El controlador lleva el sistema al equilibrio X = 0 (carro en x = 0,
 # pendulo vertical) desde la posicion y el angulo iniciales asignados.
 # La planta "real" son las ecuaciones de movimiento escritas en
@@ -43,6 +42,7 @@ var K: Vector4 = Vector4.ZERO
 @export_group("Condiciones Iniciales")
 @export var initial_cart_x_px: float = 0.0   # Posicion inicial [px]
 @export var initial_angle_deg: float = 20.0  # Angulo inicial [grados]
+@export var simulation_time_s: float = 3.0   # Tiempo de simulacion [s] (t_final en MATLAB)
 
 # Angulo inicial maximo que se puede asignar y umbral de la advertencia
 const MAX_INITIAL_ANGLE_DEG: float = 40.0
@@ -114,6 +114,7 @@ var linear_max_angle_gap: float = 0.0  # max |theta_nl - theta_lin| [rad]
 var panel_graficas: PanelGraficas
 var btn_graficas: Button
 var lbl_angle_warning: Label
+var control_tiempo: ControlTiempo
 var chk_linear: CheckBox
 var lbl_linear: Label
 var lbl_plant: Label
@@ -245,6 +246,11 @@ func _setup_inputs() -> void:
 	lbl_angle_warning.visible = false
 	input_angulo_inicial.add_sibling(lbl_angle_warning)
 
+	# Duracion de la simulacion (t_final de codigo4.m)
+	control_tiempo = ControlTiempo.new(simulation_time_s)
+	lbl_angle_warning.add_sibling(control_tiempo)
+	control_tiempo.spin.value_changed.connect(_on_preview_changed)
+
 	btn_simular.text = "Simular"
 
 	if not btn_simular.pressed.is_connected(_on_btn_simular_pressed):
@@ -361,8 +367,13 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 	linear_state = Vector4(cart_x, theta, 0.0, 0.0)
 	linear_max_angle_gap = 0.0
 
+	# Graficas en [0, t_final] desde la condicion inicial (t = 0)
 	sim_time = 0.0
 	panel_graficas.limpiar()
+	panel_graficas.fijar_duracion(control_tiempo.t_final())
+	panel_graficas.agregar_muestra(sim_time, Vector4(cart_x, theta, cart_velocity, theta_velocity),
+		linear_state if _linear_enabled() else Vector4(NAN, NAN, NAN, NAN), 0.0)
+	control_tiempo.mostrar(sim_time, false)
 
 	_update_angle_warning()
 	_update_linear_label()
@@ -377,7 +388,9 @@ func _physics_process(delta: float) -> void:
 	if not is_simulating:
 		return
 
-	var simulation_delta: float = delta * simulation_speed
+	# El ultimo paso se recorta para terminar exactamente en t_final
+	var t_final: float = control_tiempo.t_final()
+	var simulation_delta: float = minf(delta * simulation_speed, t_final - sim_time)
 	if simulation_delta <= 0.0:
 		return
 
@@ -419,6 +432,11 @@ func _physics_process(delta: float) -> void:
 		_update_linear_label()
 	else:
 		panel_graficas.agregar_muestra(sim_time, state, Vector4(NAN, NAN, NAN, NAN), 0.0)
+
+	var terminada: bool = sim_time >= t_final - 1e-9
+	control_tiempo.mostrar(sim_time, terminada)
+	if terminada:
+		is_simulating = false
 
 
 # ============================================================
