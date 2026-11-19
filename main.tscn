@@ -47,6 +47,10 @@ text = "Seguimiento de trayectoria"
 layout_mode = 2
 text = "Configuración"
 
+[node name="creditos" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Créditos y licencias"
+
 [node name="Label2" type="Label" parent="." unique_id=1694312694]
 layout_mode = 1
 anchors_preset = 2
@@ -67,3 +71,4 @@ texture = ExtResource("2_0xm2m")
 [connection signal="pressed" from="VBoxContainer/lineal" to="." method="_on_lineal_pressed"]
 [connection signal="pressed" from="VBoxContainer/seguimiento" to="." method="_on_seguimiento_pressed"]
 [connection signal="pressed" from="VBoxContainer/opciones" to="." method="_on_opciones_pressed"]
+[connection signal="pressed" from="VBoxContainer/creditos" to="." method="_on_creditos_pressed"]

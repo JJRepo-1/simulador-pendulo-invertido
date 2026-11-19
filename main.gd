@@ -28,3 +28,7 @@ func _on_seguimiento_pressed() -> void:
 
 func _on_opciones_pressed() -> void:
 	get_tree().change_scene_to_file("res://configuracion.tscn")
+
+
+func _on_creditos_pressed() -> void:
+	get_tree().change_scene_to_file("res://creditos.tscn")
