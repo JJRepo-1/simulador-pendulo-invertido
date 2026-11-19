@@ -47,7 +47,7 @@ text = "Seguimiento de trayectoria"
 layout_mode = 2
 text = "Configuración"
 
-[node name="creditos" type="Button" parent="VBoxContainer"]
+[node name="creditos" type="Button" parent="VBoxContainer" unique_id=1750039355]
 layout_mode = 2
 text = "Créditos y licencias"
 
@@ -61,7 +61,7 @@ offset_top = -41.0
 offset_right = 361.0
 offset_bottom = -18.0
 grow_vertical = 0
-text = "Hecho por Josue Jordan Ramos Sanchez v1.0.0"
+text = "v1.1.0"
 
 [node name="Icon" type="Sprite2D" parent="." unique_id=758495198]
 position = Vector2(1059, 563)
