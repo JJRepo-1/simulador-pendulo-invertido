@@ -45,11 +45,16 @@ var sim_time: float = 0.0  # Tiempo de simulacion [s]
 @onready var bob_sprite: Sprite2D = $masa
 
 # Interfaz creada por codigo (misma zona de pantalla que en pendulo_2)
-const GRAFICAS_RECT := Rect2(148.0, 58.0, 562.0, 238.0)
+const GRAFICAS_RECT := PanelGraficas.RECT
 var panel_graficas: PanelGraficas
 var btn_graficas: Button
 var control_tiempo: ControlTiempo
 var simulando: bool = true
+
+# Registro por paso de integracion (metricas y CSV), en SI
+var registro := RegistroSimulacion.new(
+	PackedStringArray(["t", "x", "theta", "dx", "dtheta"]),
+	PackedStringArray(["s", "m", "rad", "m/s", "rad/s"]))
 
 
 func _ready() -> void:
@@ -113,6 +118,29 @@ func _setup_ui() -> void:
 	panel_graficas.position = GRAFICAS_RECT.position
 	panel_graficas.size = GRAFICAS_RECT.size
 	panel_graficas.fijar_rango(PanelGraficas.IDX_X, min_x / pixels_per_meter, max_x / pixels_per_meter)
+	panel_graficas.registro = registro
+	panel_graficas.metadatos = _metadatos
+	panel_graficas.nombre_escena = "sin_control"
+
+
+func _finalizar() -> void:
+	panel_graficas.mostrar_resultados(MetricasSimulacion.calcular(registro, "sin_control"))
+
+
+func _metadatos() -> PackedStringArray:
+	var p: Dictionary = modelo.parametros()
+	var m := PackedStringArray()
+	m.append("Escena: péndulo sin control (u = 0)")
+	m.append("Planta: " + ("ecuaciones del usuario" if planta_es_usuario else "modelo de referencia"))
+	m.append("Ecuación del carro: " + Globals.no_lineal_carro)
+	m.append("Ecuación del péndulo: " + Globals.no_lineal_pendulo)
+	m.append("Parámetros: M=%s kg, m=%s kg, l=%s m, J=%s kg*m^2, g=%s m/s^2, c=%s N*s/m, b=%s N*m*s/rad" % [
+		p.M, p.m, p.l, p.J, p.g, p.c, p.b])
+	m.append("Condiciones iniciales: x0=%s m, theta0=%s deg, dx0=0, dtheta0=0" % [
+		initial_cart_x_px / pixels_per_meter, initial_angle_deg])
+	m.append("t_final: %s s" % control_tiempo.t_final())
+	m.append("Integrador: Runge-Kutta 4, paso <= %s s (una fila por paso)" % String.num(max_integration_step, 6))
+	return m
 
 
 func reset_state(start_x_px: float, start_angle_deg: float) -> void:
@@ -128,6 +156,8 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 		panel_graficas.fijar_duracion(control_tiempo.t_final())
 		panel_graficas.agregar_muestra(sim_time, Vector4(cart_x, theta, cart_velocity, theta_velocity))
 		control_tiempo.mostrar(sim_time, false)
+	registro.limpiar()
+	registro.agregar([sim_time, cart_x, theta, cart_velocity, theta_velocity])
 	update_visuals()
 
 
@@ -144,17 +174,20 @@ func _physics_process(delta: float) -> void:
 	var h: float = simulation_delta / float(substeps)
 
 	var state: Vector4 = Vector4(cart_x, theta, cart_velocity, theta_velocity)
-	for _i in range(substeps):
+	for i in range(substeps):
 		state = _rk4_step(state, h)
 		state = _enforce_cart_limits(state)
+		registro.agregar([sim_time + h * float(i + 1), state.x, state.y, state.z, state.w])
 
 	if planta_es_usuario and planta.error_ejecucion != "":
 		push_warning("Simulación detenida: " + planta.error_ejecucion)
 		set_physics_process(false)
+		_finalizar()
 		return
 	if not (is_finite(state.x) and is_finite(state.y) and is_finite(state.z) and is_finite(state.w)):
 		push_warning("Simulación detenida: el estado dejó de ser finito.")
 		set_physics_process(false)
+		_finalizar()
 		return
 
 	cart_x = state.x
@@ -170,6 +203,7 @@ func _physics_process(delta: float) -> void:
 	control_tiempo.mostrar(sim_time, terminada)
 	if terminada:
 		simulando = false
+		_finalizar()
 
 
 # Planta no lineal con u = 0.

@@ -1,3 +1,16 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# MATLAB / Simulink: archivos temporales y de caché que se regeneran solos
+# (los modelos .slx y los scripts .m sí se versionan)
+slprj/
+*.slxc
+*.slx.r20*
+*.mdl.r20*
+*.asv
+*.autosave
+*.mex*
+codegen/
+*_grt_rtw/
+*_ert_rtw/

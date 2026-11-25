@@ -94,7 +94,7 @@ var Ba_lin := PackedFloat64Array()   # 5 valores
 var linear_state := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 0.0])
 var linear_max_angle_gap: float = 0.0
 
-const GRAFICAS_RECT := Rect2(148.0, 58.0, 562.0, 238.0)
+const GRAFICAS_RECT := PanelGraficas.RECT
 
 
 # ============================================================
@@ -116,6 +116,18 @@ var panel_graficas: PanelGraficas
 var btn_graficas: Button
 var lbl_angle_warning: Label
 var control_tiempo: ControlTiempo
+var idx_grafica_u: int = -1
+var idx_grafica_e: int = -1
+var cambios_referencia: Array = []   # [[t, r], ...] para los metadatos del CSV
+
+# Registro por paso de integracion (metricas y CSV), en SI
+var registro := RegistroSimulacion.new(
+	PackedStringArray(["t", "x", "theta", "dx", "dtheta", "z",
+		"x_lin", "theta_lin", "dx_lin", "dtheta_lin", "z_lin",
+		"u", "u_cmd", "u_lin", "r", "e", "e_lin"]),
+	PackedStringArray(["s", "m", "rad", "m/s", "rad/s", "m*s",
+		"m", "rad", "m/s", "rad/s", "m*s",
+		"N", "N", "N", "m", "m", "m"]))
 var chk_linear: CheckBox
 var lbl_linear: Label
 var lbl_plant: Label
@@ -198,6 +210,18 @@ func _setup_plots() -> void:
 	panel_graficas.size = GRAFICAS_RECT.size
 	panel_graficas.fijar_rango(PanelGraficas.IDX_X, min_x / pixels_per_meter, max_x / pixels_per_meter)
 	panel_graficas.graficas[PanelGraficas.IDX_X].ref_name = "referencia r"
+
+	# Senal de control u(t) con saturacion y error de seguimiento e(t) = r - x
+	idx_grafica_u = panel_graficas.agregar_grafica("Señal de control", "u", "N", Color(0.0, 0.5, 0.5))
+	var g_u: RealTimePlot = panel_graficas.graficas[idx_grafica_u]
+	g_u.main_name = "u aplicada"
+	g_u.limites = PackedFloat64Array([max_force_newtons, -max_force_newtons])
+	g_u.limite_nombre = "±u_max"
+	idx_grafica_e = panel_graficas.agregar_grafica("Error de seguimiento e = r − x", "e", "m", Color(0.75, 0.0, 0.55))
+
+	panel_graficas.registro = registro
+	panel_graficas.metadatos = _metadatos
+	panel_graficas.nombre_escena = "seguimiento"
 
 	btn_graficas = Button.new()
 	btn_graficas.text = "Mostrar gráficas"
@@ -294,6 +318,7 @@ func _setup_linear_ui() -> void:
 
 func _stop_with_error(message: String) -> void:
 	is_simulating = false
+	_finalizar()
 	push_warning(message)
 	if lbl_plant:
 		lbl_plant.text = message
@@ -325,6 +350,8 @@ func _on_btn_simular_pressed() -> void:
 func _on_btn_aceptar_pressed() -> void:
 	input_referencia.apply()
 	reference_m = clampf(input_referencia.value, min_x, max_x) / pixels_per_meter
+	if is_simulating:
+		cambios_referencia.append([sim_time, reference_m])
 	_update_labels()
 	queue_redraw()
 
@@ -379,6 +406,11 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 		lin0 = Vector4(linear_state[0], linear_state[1], linear_state[2], linear_state[3])
 	panel_graficas.agregar_muestra(sim_time, Vector4(cart_x, theta, cart_velocity, theta_velocity),
 		lin0, reference_m)
+	cambios_referencia = [[0.0, reference_m]]
+	registro.limpiar()
+	var X0 := PackedFloat64Array([cart_x, theta, cart_velocity, theta_velocity, integral_error])
+	_registrar(sim_time, X0, _linear_enabled())
+	_graficar_control(sim_time, X0, _linear_enabled())
 	control_tiempo.mostrar(sim_time, false)
 
 	_update_angle_warning()
@@ -406,11 +438,12 @@ func _physics_process(delta: float) -> void:
 	var X := PackedFloat64Array([cart_x, theta, cart_velocity, theta_velocity, integral_error])
 	var use_linear: bool = _linear_enabled()
 
-	for _i in range(substeps):
+	for i in range(substeps):
 		X = _rk4(_plant_derivative, X, h)
 		X = _enforce_cart_limits(X)
 		if use_linear:
 			linear_state = _rk4(_linear_derivative, linear_state, h)
+		_registrar(sim_time + h * float(i + 1), X, use_linear)
 
 	if planta_es_usuario and planta.error_ejecucion != "":
 		_stop_with_error("Simulación detenida: " + planta.error_ejecucion)
@@ -437,12 +470,71 @@ func _physics_process(delta: float) -> void:
 		panel_graficas.agregar_muestra(sim_time, estado, lin, reference_m)
 	else:
 		panel_graficas.agregar_muestra(sim_time, estado, Vector4(NAN, NAN, NAN, NAN), reference_m)
+	_graficar_control(sim_time, X, use_linear)
 	_update_labels()
 
 	var terminada: bool = sim_time >= t_final - 1e-9
 	control_tiempo.mostrar(sim_time, terminada)
 	if terminada:
 		is_simulating = false
+		_finalizar()
+
+
+# Una fila del registro: estado no lineal (con z), lineal (o NAN), fuerzas y error.
+func _registrar(t: float, X: PackedFloat64Array, use_linear: bool) -> void:
+	var u_cmd: float = _control_law(X)
+	var u: float = clampf(u_cmd, -max_force_newtons, max_force_newtons)
+	var fila: Array = [t, X[0], X[1], X[2], X[3], X[4]]
+	if use_linear:
+		fila.append_array([linear_state[0], linear_state[1], linear_state[2], linear_state[3], linear_state[4]])
+		fila.append_array([u, u_cmd, _control_law(linear_state), reference_m,
+			reference_m - X[0], reference_m - linear_state[0]])
+	else:
+		fila.append_array([NAN, NAN, NAN, NAN, NAN, u, u_cmd, NAN, reference_m, reference_m - X[0], NAN])
+	registro.agregar(fila)
+
+
+func _graficar_control(t: float, X: PackedFloat64Array, use_linear: bool) -> void:
+	panel_graficas.graficas[idx_grafica_u].add_sample(t, _control_force(X), NAN,
+		_control_law(linear_state) if use_linear else NAN)
+	panel_graficas.graficas[idx_grafica_e].add_sample(t, reference_m - X[0], NAN,
+		reference_m - linear_state[0] if use_linear else NAN)
+
+
+func _finalizar() -> void:
+	panel_graficas.mostrar_resultados(
+		MetricasSimulacion.calcular(registro, "seguimiento", max_force_newtons))
+
+
+# Condiciones de la prueba para el CSV (para poder reproducir la figura).
+func _metadatos() -> PackedStringArray:
+	var p: Dictionary = modelo.parametros()
+	var m := PackedStringArray()
+	m.append("Escena: seguimiento de trayectoria con acción integral, u = -Ka*[x, theta, dx, dtheta, z], z' = r - x")
+	m.append("Planta: " + ("ecuaciones del usuario" if planta_es_usuario else "modelo de referencia"))
+	m.append("Ecuación del carro: " + Globals.no_lineal_carro)
+	m.append("Ecuación del péndulo: " + Globals.no_lineal_pendulo)
+	m.append("Parámetros: M=%s kg, m=%s kg, l=%s m, J=%s kg*m^2, g=%s m/s^2, c=%s N*s/m, b=%s N*m*s/rad" % [
+		p.M, p.m, p.l, p.J, p.g, p.c, p.b])
+	m.append("u_max: %s N" % max_force_newtons)
+	m.append("Ka = [K, -ki]: [%s]  (ki = %s)" % [", ".join(Array(Ka).map(func(v): return str(v))), -Ka[4]])
+	if linear_available:
+		var polos: Array[Vector2] = Algebra.polos(Algebra.lazo_cerrado(Aa_lin, Ba_lin, Ka), N)
+		var tp: PackedStringArray = []
+		for q: Vector2 in polos:
+			tp.append(Algebra.texto_polo(q))
+		m.append("Polos de Aa-Ba*Ka (modelo lineal aumentado): " + ", ".join(tp))
+	m.append("Condiciones iniciales: x0=%s m, theta0=%s deg, dx0=0, dtheta0=0, z0=0" % [
+		registro.columna("x")[0] if registro.tamano() > 0 else 0.0,
+		rad_to_deg(registro.columna("theta")[0]) if registro.tamano() > 0 else 0.0])
+	var cambios: PackedStringArray = []
+	for c: Array in cambios_referencia:
+		cambios.append("t=%s s -> r=%s m" % [String.num(c[0], 4), String.num(c[1], 4)])
+	m.append("Referencia r (escalones): " + "; ".join(cambios))
+	m.append("t_final: %s s" % control_tiempo.t_final())
+	m.append("Integrador: Runge-Kutta 4, paso <= %s s (una fila por paso)" % String.num(max_integration_step, 6))
+	m.append("Comparación lineal: " + ("sí (dXa/dt = Aa*Xa + Ba*u + Br*r, sin saturación)" if _linear_enabled() else "no"))
+	return m
 
 
 # ============================================================

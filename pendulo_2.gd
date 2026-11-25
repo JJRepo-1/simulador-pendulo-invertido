@@ -79,7 +79,7 @@ var sim_time: float = 0.0   # Tiempo de simulacion desde "Simular" [s]
 
 # Zona de pantalla del panel de graficas (coordenadas de la ventana 720x380):
 # a la derecha de los controles, para no tapar el boton Simular.
-const GRAFICAS_RECT := Rect2(148.0, 58.0, 562.0, 238.0)
+const GRAFICAS_RECT := PanelGraficas.RECT
 
 var cart_x: float = 0.0
 var theta: float = 0.0
@@ -112,8 +112,15 @@ var linear_max_angle_gap: float = 0.0  # max |theta_nl - theta_lin| [rad]
 
 # Creados por codigo
 var panel_graficas: PanelGraficas
+var idx_grafica_u: int = -1
 var btn_graficas: Button
 var lbl_angle_warning: Label
+
+# Registro por paso de integracion (metricas y CSV), en SI
+var registro := RegistroSimulacion.new(
+	PackedStringArray(["t", "x", "theta", "dx", "dtheta", "x_lin", "theta_lin", "dx_lin", "dtheta_lin",
+		"u", "u_cmd", "u_lin"]),
+	PackedStringArray(["s", "m", "rad", "m/s", "rad/s", "m", "rad", "m/s", "rad/s", "N", "N", "N"]))
 var control_tiempo: ControlTiempo
 var chk_linear: CheckBox
 var lbl_linear: Label
@@ -208,6 +215,17 @@ func _setup_plots() -> void:
 	panel_graficas.fijar_rango(PanelGraficas.IDX_X, min_x / pixels_per_meter, max_x / pixels_per_meter)
 	panel_graficas.graficas[PanelGraficas.IDX_X].ref_name = "equilibrio"
 
+	# Senal de control u(t) con las lineas de saturacion ±u_max
+	idx_grafica_u = panel_graficas.agregar_grafica("Señal de control", "u", "N", Color(0.0, 0.5, 0.5))
+	var g_u: RealTimePlot = panel_graficas.graficas[idx_grafica_u]
+	g_u.main_name = "u aplicada"
+	g_u.limites = PackedFloat64Array([max_force_newtons, -max_force_newtons])
+	g_u.limite_nombre = "±u_max"
+
+	panel_graficas.registro = registro
+	panel_graficas.metadatos = _metadatos
+	panel_graficas.nombre_escena = "regulacion"
+
 	btn_graficas = Button.new()
 	btn_graficas.text = "Mostrar gráficas"
 	btn_graficas.focus_mode = Control.FOCUS_NONE
@@ -298,6 +316,7 @@ func _setup_linear_ui() -> void:
 
 func _stop_with_error(message: String) -> void:
 	is_simulating = false
+	_finalizar()
 	push_warning(message)
 	if lbl_plant:
 		lbl_plant.text = message
@@ -371,8 +390,12 @@ func reset_state(start_x_px: float, start_angle_deg: float) -> void:
 	sim_time = 0.0
 	panel_graficas.limpiar()
 	panel_graficas.fijar_duracion(control_tiempo.t_final())
-	panel_graficas.agregar_muestra(sim_time, Vector4(cart_x, theta, cart_velocity, theta_velocity),
+	var estado0 := Vector4(cart_x, theta, cart_velocity, theta_velocity)
+	panel_graficas.agregar_muestra(sim_time, estado0,
 		linear_state if _linear_enabled() else Vector4(NAN, NAN, NAN, NAN), 0.0)
+	registro.limpiar()
+	_registrar(sim_time, estado0, _linear_enabled())
+	_graficar_control(sim_time, estado0, _linear_enabled())
 	control_tiempo.mostrar(sim_time, false)
 
 	_update_angle_warning()
@@ -401,11 +424,12 @@ func _physics_process(delta: float) -> void:
 	var state: Vector4 = Vector4(cart_x, theta, cart_velocity, theta_velocity)
 	var use_linear: bool = _linear_enabled()
 
-	for _i in range(substeps):
+	for i in range(substeps):
 		state = _rk4_step(state, h)
 		state = _enforce_cart_limits(state)
 		if use_linear:
 			linear_state = _rk4_step_linear(linear_state, h)
+		_registrar(sim_time + h * float(i + 1), state, use_linear)
 
 	# Si las ecuaciones del usuario fallan (division entre cero, valores no
 	# finitos), se detiene la simulacion y se informa en pantalla.
@@ -432,12 +456,63 @@ func _physics_process(delta: float) -> void:
 		_update_linear_label()
 	else:
 		panel_graficas.agregar_muestra(sim_time, state, Vector4(NAN, NAN, NAN, NAN), 0.0)
+	_graficar_control(sim_time, state, use_linear)
 
 	var terminada: bool = sim_time >= t_final - 1e-9
 	control_tiempo.mostrar(sim_time, terminada)
 	if terminada:
 		is_simulating = false
+		_finalizar()
 
+
+# Una fila del registro: estado no lineal, lineal (o NAN) y fuerzas.
+func _registrar(t: float, state: Vector4, use_linear: bool) -> void:
+	var u_cmd: float = _control_law(state)
+	var u: float = clampf(u_cmd, -max_force_newtons, max_force_newtons)
+	if use_linear:
+		registro.agregar([t, state.x, state.y, state.z, state.w,
+			linear_state.x, linear_state.y, linear_state.z, linear_state.w, u, u_cmd, _control_law(linear_state)])
+	else:
+		registro.agregar([t, state.x, state.y, state.z, state.w, NAN, NAN, NAN, NAN, u, u_cmd, NAN])
+
+
+func _graficar_control(t: float, state: Vector4, use_linear: bool) -> void:
+	panel_graficas.graficas[idx_grafica_u].add_sample(t, _control_force(state), NAN,
+		_control_law(linear_state) if use_linear else NAN)
+
+
+# Calcula las metricas de la simulacion y las muestra en "Resultados".
+func _finalizar() -> void:
+	panel_graficas.mostrar_resultados(
+		MetricasSimulacion.calcular(registro, "regulador", max_force_newtons))
+
+
+# Condiciones de la prueba para el CSV (para poder reproducir la figura).
+func _metadatos() -> PackedStringArray:
+	var p: Dictionary = modelo.parametros()
+	var m := PackedStringArray()
+	m.append("Escena: péndulo con control (regulación), u = -K*X")
+	m.append("Planta: " + ("ecuaciones del usuario" if planta_es_usuario else "modelo de referencia"))
+	m.append("Ecuación del carro: " + Globals.no_lineal_carro)
+	m.append("Ecuación del péndulo: " + Globals.no_lineal_pendulo)
+	m.append("Parámetros: M=%s kg, m=%s kg, l=%s m, J=%s kg*m^2, g=%s m/s^2, c=%s N*s/m, b=%s N*m*s/rad" % [
+		p.M, p.m, p.l, p.J, p.g, p.c, p.b])
+	m.append("u_max: %s N" % max_force_newtons)
+	m.append("K: [%s, %s, %s, %s]" % [K.x, K.y, K.z, K.w])
+	if linear_available:
+		var polos: Array[Vector2] = Algebra.polos(
+			Algebra.lazo_cerrado(A_lin, B_lin, PackedFloat64Array([K.x, K.y, K.z, K.w])), 4)
+		var tp: PackedStringArray = []
+		for q: Vector2 in polos:
+			tp.append(Algebra.texto_polo(q))
+		m.append("Polos de A-BK (modelo lineal): " + ", ".join(tp))
+	m.append("Condiciones iniciales: x0=%s m, theta0=%s deg, dx0=0, dtheta0=0" % [
+		registro.columna("x")[0] if registro.tamano() > 0 else 0.0,
+		rad_to_deg(registro.columna("theta")[0]) if registro.tamano() > 0 else 0.0])
+	m.append("t_final: %s s" % control_tiempo.t_final())
+	m.append("Integrador: Runge-Kutta 4, paso <= %s s (una fila por paso)" % String.num(max_integration_step, 6))
+	m.append("Comparación lineal: " + ("sí (dX/dt = A*X + B*u, sin saturación)" if _linear_enabled() else "no"))
+	return m
 
 # ============================================================
 # 10. INTEGRADORES RUNGE-KUTTA DE CUARTO ORDEN
