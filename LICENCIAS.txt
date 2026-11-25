@@ -1,5 +1,5 @@
 ========================================================================
-SIMULADOR DE PÉNDULO INVERTIDO v1.0.0 - CRÉDITOS Y LICENCIAS
+SIMULADOR DE PÉNDULO INVERTIDO v1.1.0 - CRÉDITOS Y LICENCIAS
 ========================================================================
 
 Autor: Josue Jordan Ramos Sanchez
@@ -19,7 +19,6 @@ Resumen: https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es
 Texto legal completo: archivo LICENSE del repositorio.
 
 Otros créditos:
-- Logo de Godot (icon.svg): Andrea Calabró, licencia CC BY 4.0.
 - MATLAB es marca registrada de The MathWorks, Inc. YALMIP y SeDuMi son
   herramientas externas: no se incluyen, solo se usan si el usuario ya las tiene.
 

@@ -1,7 +1,6 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://pendulo_3.gd" id="1_p3scr"]
-[ext_resource type="Texture2D" uid="uid://6lacoe7hrbwi" path="res://icon.svg" id="2_0nebc"]
 [ext_resource type="Texture2D" uid="uid://cwscrl018k1nr" path="res://Sprite-0001.png" id="2_tt8m7"]
 [ext_resource type="Texture2D" uid="uid://uw7hsui0fbtl" path="res://Sprite-0002.png" id="3_qs2cl"]
 
@@ -16,7 +15,6 @@ texture = ExtResource("3_qs2cl")
 
 [node name="masa" type="Sprite2D" parent="."]
 visible = false
-texture = ExtResource("2_0nebc")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 

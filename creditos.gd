@@ -91,7 +91,6 @@ static func texto_bbcode() -> String:
 	t.append("[url=%s]%s[/url]" % [LICENCIA_URL, LICENCIA_URL])
 	t.append("")
 	t.append("[b]Otros créditos[/b]")
-	t.append("• Logo de Godot (icon.svg): Andrea Calabró, licencia CC BY 4.0.")
 	t.append("• MATLAB es marca registrada de The MathWorks, Inc. YALMIP y SeDuMi son "
 		+ "herramientas externas: no se incluyen, solo se usan si el usuario ya las tiene instaladas.")
 	t.append("")
@@ -132,7 +131,6 @@ static func texto_plano() -> String:
 	t.append("Texto legal completo: archivo LICENSE del repositorio.")
 	t.append("")
 	t.append("Otros créditos:")
-	t.append("- Logo de Godot (icon.svg): Andrea Calabró, licencia CC BY 4.0.")
 	t.append("- MATLAB es marca registrada de The MathWorks, Inc. YALMIP y SeDuMi son")
 	t.append("  herramientas externas: no se incluyen, solo se usan si el usuario ya las tiene.")
 	t.append("")

@@ -195,7 +195,6 @@ Esta obra está bajo la licencia [Creative Commons Atribución-NoComercial-Compa
 
 - **Autor:** Josue Jordan Ramos Sanchez, como proyecto de maestría.
 - **[Godot Engine](https://godotengine.org)**, © Juan Linietsky, Ariel Manzur y colaboradores, bajo [licencia MIT](https://godotengine.org/license). Los ejecutables exportados incluyen el motor. Sus avisos de licencia, y los de los componentes de terceros que trae, están en la pantalla **Créditos y licencias** del menú principal y en [`LICENCIAS.txt`](LICENCIAS.txt), que acompaña cada Release.
-- **Logo de Godot** (`icon.svg`, usado en el menú principal), de Andrea Calabró, bajo [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - **MATLAB** es marca registrada de The MathWorks, Inc. **YALMIP** (Johan Löfberg) y **SeDuMi** son herramientas externas: **no se incluyen** en este proyecto, solo se usan si el usuario ya las tiene instaladas.
 
 ## Aviso

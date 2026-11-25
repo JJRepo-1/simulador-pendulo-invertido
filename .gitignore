@@ -14,3 +14,6 @@ slprj/
 codegen/
 *_grt_rtw/
 *_ert_rtw/
+
+# Graficas de LaTeX para el articulo (solo locales, no se publican)
+graficas_latex/
